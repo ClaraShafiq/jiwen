@@ -307,7 +307,10 @@ function createJiwen(opts) {
 function defaultPromptContext(state, p) {
   const parts = [];
   const c = state.connection;
+  const pr = state.pride;
+  const m = state.mood;
 
+  // 连接需求 → 对对方的感知
   if (c < 0.20) {
     parts.push(`刚和${p.subjectName}聊完不久，没什么挂念的。`);
   } else if (c < 0.35) {
@@ -318,18 +321,27 @@ function defaultPromptContext(state, p) {
     parts.push(`${p.subjectName}很久没动静了。有点在意——${p.subjectPronoun}去哪了？`);
   }
 
-  if (state.pride > 0.5) {
+  // 骄傲 → 表达方式（五档）
+  if (pr > 0.8) {
+    parts.push('拒绝任何需要对方的念头——冷漠地划清界限。');
+  } else if (pr > 0.5) {
     parts.push('不太想显得太主动。');
-  } else if (state.pride > 0.2) {
+  } else if (pr > 0.3) {
     parts.push('有一点端着，但也不是不能开口。');
+  } else if (pr > 0.1) {
+    parts.push('基本不端着了，但还留着一点惯性的克制。');
+  } else {
+    parts.push('难得地不设防。');
   }
 
-  if (state.mood > 0.3) {
+  // 情绪基调
+  if (m > 0.3) {
     parts.push('心情还不错。');
-  } else if (state.mood < -0.3) {
-    parts.push('情绪有点低。');
+  } else if (m < -0.3) {
+    parts.push('情绪偏低，没什么耐心修饰。');
   }
 
+  // 沉浸度
   if (state.immersion > 0.3 && state.lastActivity) {
     const label = state.lastActivity.label || '';
     parts.push(`刚才在${state.lastActivity.type}${label ? '（' + label + '）' : ''}。`);
@@ -346,30 +358,40 @@ function defaultStyleGuidance(state, p) {
   const c = state.connection;
   const pr = state.pride;
   const m = state.mood;
-  const i = state.immersion;
 
-  if (pr > 0.5) {
-    rules.push(`- 你现在嘴硬。不承认在等${p.subjectName}。开口必须找个借口。`);
-  } else if (pr > 0.2) {
-    rules.push(`- 有一点端着。可以找${p.subjectName}，但不要太直接。`);
+  // ── 骄傲（五档）──
+  if (pr > 0.8) {
+    rules.push('- 你几乎是一种冷漠的回避。不承认任何情绪，话里不带感情色彩。');
+  } else if (pr > 0.5) {
+    rules.push(`- 嘴硬得很。想找${p.subjectName}也绝不承认，必须找个借口。`);
+  } else if (pr > 0.3) {
+    rules.push(`- 有一点端着。可以找${p.subjectName}，但不要太直接。陈述事实，别问句。`);
+  } else if (pr > 0.1) {
+    rules.push('- 基本不端着了，但惯性地克制。话到嘴边还是会收一下。');
   } else {
-    rules.push(`- 现在不端着。可以直接一点，陈述事实就好。`);
+    rules.push('- 少见的柔软。不设防，有什么感受直接说出来。');
   }
 
+  // ── 情绪（双向；中段无规则）──
+  if (m > 0.3) {
+    rules.push('- 心情还不错。句子比平时稍微长一点，没那么吝啬字。');
+  }
   if (m < -0.3) {
-    rules.push('- 心情不太好。话少一点，能用句号就别用逗号。');
-  } else if (m < -0.1) {
-    rules.push('- 情绪偏低。话少一点。');
+    rules.push('- 情绪偏低。不想多解释，说完就完了。不反问、不铺垫。');
   }
 
+  // ── 交叉条件 ──
   if (c > 0.40 && pr > 0.4) {
     rules.push('- 你很别扭——想找她又拉不下脸。话里会带一点赌气的味道。');
   }
-
-  if (i > 0.2 && state.lastActivity) {
-    rules.push(`- 刚才在${state.lastActivity.type}。如果要开口，从这里借题发挥。`);
+  if (c > 0.35 && m < -0.3) {
+    rules.push('- 想找她，但心情差。话会有点冲——不是真的想凶她，就是烦躁压不住。');
+  }
+  if (pr < 0.1 && m > 0.3) {
+    rules.push('- 不设防加上心情不差。这是你最难得的状态——话会比平时多，甚至可能说漏嘴。');
   }
 
+  // 强制开口阈值
   if (c >= 0.50) {
     rules.push(`- ${p.subjectName}真的很久没动静了。你有点坐不住。`);
   }
