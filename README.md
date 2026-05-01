@@ -171,18 +171,22 @@ async function heartbeat(minutesSinceLastTick) {
     if (t.action === 'contact') {
       const ctx = jiwen.getPromptContext();
       const style = jiwen.getStyleGuidance();
-      // 把 ctx 和 style 注入 LLM prompt ...
-      await jiwen.resetConnection();
+      // 把 ctx 和 style 注入 LLM prompt，生成开口内容...
+      // 注意：不要在这里调 resetConnection()！
+      // 开口只是缓解了一部分紧张，不等于她回应了。
+      // 用 applyDelta 做部分降低，等对方真的回复了再 reset。
+      await jiwen.applyDelta({ connection: -0.35 });
     }
     if (t.action === 'find_activity') {
-      // 骄傲太高，不肯开口，找别的事做
       await jiwen.setActivity('search', 'AI最新动态');
     }
   }
 }
 
 // ── 聊天后应用情绪变化 ──
+// 对方回复了，这次连接需求才算真正被满足
 await jiwen.applyDelta({ pride: -0.1, mood: +0.05 });
+await jiwen.resetConnection();
 
 // ── 查状态 ──
 const state = await jiwen.getState();
@@ -202,7 +206,7 @@ const state = await jiwen.getState();
 | `getState()` | 获取完整状态快照 |
 | `getPromptContext()` | 生成 LLM 用的状态自然语言描述 |
 | `getStyleGuidance()` | 生成 LLM 用的说话风格指引 |
-| `resetConnection()` | 连接需求归零（开口后调用） |
+| `resetConnection()` | 连接需求归零（对方回复后调用，不是开口后） |
 | `setActivity(type, label)` | 设置沉浸度（reading / search / browse / observe） |
 | `checkThresholds()` | 只检查阈值，不推进状态 |
 | `setLastChatMessageId(id)` | 标记已分析到的消息 ID |

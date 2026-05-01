@@ -34,6 +34,7 @@ function createJiwen(opts) {
   // ── 衰减 / 回归速率（每分钟） ──
   const rates = Object.assign({
     connectionGrowth: null, // 由 connectionRateFn 动态决定
+    connectionOnReply: 0.20,  // 对方回复时 connection 降幅
     immersionDecay:   0.010,
     prideRegress:     0.003,
     moodRegress:      0.005,
@@ -126,7 +127,7 @@ function createJiwen(opts) {
 
     // 如果有新消息，压回连接需求
     if (lastMsg && lastMsg.id && lastMsg.id > (state._lastMsgId || 0)) {
-      state.connection = Math.max(axes.connection[0], state.connection - 0.2);
+      state.connection = Math.max(axes.connection[0], state.connection - rates.connectionOnReply);
       state._lastMsgId = lastMsg.id;
     }
 
