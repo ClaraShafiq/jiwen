@@ -1,0 +1,21 @@
+{
+  "name": "jiwen",
+  "version": "0.1.0",
+  "description": "积温 — 不靠概率骰子的 AI 角色主动意识引擎。四轴连续状态 + 数学漂移 + 阈值触发",
+  "main": "jiwen.js",
+  "license": "MIT",
+  "keywords": [
+    "ai-companion",
+    "virtual-pet",
+    "emotion-engine",
+    "continuous-state",
+    "homeostasis",
+    "ai-character",
+    "npc-ai",
+    "affective-computing"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kekewei0821-bot/jiwen"
+  }
+}
