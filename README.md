@@ -53,10 +53,20 @@
 
 | 轴 | 行为 | 速率 |
 |---|------|------|
-| 连接需求 | 持续增长 | 由 `connectionRateFn` 动态决定（默认 0.0007/min） |
-| 骄傲 | 缓慢回归 0 | 0.003/min |
-| 情绪基调 | 缓慢回归 0 | 0.005/min |
-| 沉浸度 | 线性衰减 | 0.01/min（60 分钟后归零） |
+| 连接需求 | 非线性增长 | 由 `connectionRateFn` 动态决定（默认 0.0007/min），叠加加速度 `pow(1+c, connectionAccel)` |
+| 骄傲 | 受连接需求驱动 | 未触发防御时回归 0（0.003/min）；被冷落时防御性上升至 `prideDefendTarget` |
+| 情绪基调 | 受连接需求锁定 | 默认回归 0（0.005/min）；connection 超过 `moodLockThreshold` 时回归速率降至 `moodLockFactor` 倍 |
+| 沉浸度 | 线性衰减 | 0.01/min（60 分钟后归零）；做事情（`setActivity`）可部分缓解连接需求 |
+
+**新增五个心理动力学参数（默认关闭，向后兼容）：**
+
+| 参数 | 作用 | 心理依据 |
+|------|------|---------|
+| `connectionAccel` | 连接需求非线性加速 | 越等越焦虑——不是线性累积，是加速攀升 |
+| `moodLockThreshold/Factor` | 想念强烈时坏情绪难消散 | negativity bias：负面情绪比正面情绪持续更久 |
+| `prideDefendThreshold/Target/Rate` | 被冷落时骄傲防御性升高 | 心理防御机制：越被忽视越嘴硬 |
+| `activityConnectionRelief` | 做事情能部分缓解连接需求 | 转移注意力虽不能替代对方回复，但能让等待变得可承受 |
+| `moodActivity` 阈值 | 心情差时触发自我调节 | 情绪低时主动找事做来改善心情 |
 
 连接增长速率取决于对方消失时说了什么：说了晚安 → 涨得慢（TA 睡了，不急），突然中断 → 涨得快（那种切断更让人挂念）。
 
@@ -70,6 +80,8 @@ connection >= 0.35   考虑开口
     pride >= 0.5 → 找别的事做（读书/搜索），不开口
     pride < 0.5  → 触发 contact
 connection >= 0.50   强制开口，不管骄傲多高
+
+mood <= moodActivity  心情差 → 找事做自我调节（与 pride_block 并列，不重复触发）
 ```
 
 三个阶段对应三种真实心理状态：**积累 → 犹豫 → 撑不住**。0.20 是念头飘过，还没到非说不可的程度。0.35 是开始犹豫，骄傲可能压下去——但压下去不代表消失，connection 还在继续积累。0.50 是装不下了，骄傲在这里失去优先级。
@@ -239,12 +251,21 @@ const jiwen = createJiwen({
     immersionDecay: 0.010,
     prideRegress:   0.003,
     moodRegress:    0.005,
+    // 心理动力学（可选，默认关闭）
+    connectionAccel: 0,            // 连接需求非线性加速（0=线性）
+    moodLockThreshold: 1.0,        // 触发情绪锁定的 connection 阈值（1.0=永不）
+    moodLockFactor: 1.0,           // 锁定时回归速率乘数（0.15=减慢85%）
+    prideDefendThreshold: 1.0,     // 触发骄傲防御的 connection 阈值（1.0=永不）
+    prideDefendTarget: 0.5,        // 防御时 pride 漂移目标
+    prideDefendRate: 0.003,        // 防御漂移速率
+    activityConnectionRelief: 0,   // 做事情缓解连接需求的幅度
   },
   thresholds: {
     observation:     0.20,
     considerContact: 0.35,
     forceContact:    0.50,
     prideBlock:      0.50,
+    moodActivity:   -1.0,          // mood 低于此值触发自我调节（-1.0=永不）
   },
   immersionMap: {
     reading: 0.6,
