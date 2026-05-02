@@ -11,7 +11,7 @@
  * @param {Object} [opts.initialState]   — 初始状态（默认全 0）
  * @param {Object} [opts.axes]           — 轴名称到 [min, max] 范围的映射
  * @param {Object} [opts.rates]          — 每轴每分钟漂移速率
- * @param {Object} [opts.thresholds]     — { observation, considerContact, forceContact, prideBlock }
+ * @param {Object} [opts.thresholds]     — { observation, considerContact, forceContact, prideBlock, moodActivity }
  * @param {Object} [opts.immersionMap]   — 活动类型 → 初始沉浸度
  * @param {Function} opts.connectionRateFn — (lastMessage) => number  每分钟连接需求增长速率
  * @param {Function} opts.onSave         — async (state) => void  持久化回调
@@ -38,6 +38,21 @@ function createJiwen(opts) {
     immersionDecay:   0.010,
     prideRegress:     0.003,
     moodRegress:      0.005,
+
+    // 连接需求加速：growth *= (1 + connection)^accel，0=线性
+    connectionAccel: 0,
+
+    // 情绪锁定：connection 高时 mood 回归变慢
+    moodLockThreshold: 1.0,   // connection 超过此值触发锁定（1.0=永不）
+    moodLockFactor:    1.0,   // 回归速率乘数（0.2=减慢80%）
+
+    // 骄傲防御：被冷落时 pride 向正向漂移（心理防御）
+    prideDefendThreshold: 1.0, // connection 超过此值触发防御（1.0=永不）
+    prideDefendTarget:    0.5, // 防御时 pride 漂移目标
+    prideDefendRate:      0.003, // 防御漂移速率
+
+    // 活动缓解：做事情能部分缓解连接需求
+    activityConnectionRelief: 0,   // setActivity 时 connection 降幅
   }, opts.rates);
 
   // ── 阈值 ────────────────────────
@@ -46,6 +61,7 @@ function createJiwen(opts) {
     considerContact: 0.35,
     forceContact:    0.50,
     prideBlock:      0.50,
+    moodActivity:    -1.0,   // mood 低于此值时触发自我调节（-1.0=永不）
   }, opts.thresholds);
 
   const immersionMap = opts.immersionMap || {
@@ -114,13 +130,20 @@ function createJiwen(opts) {
 
     const mins = Math.min(minutesElapsed, 60);
 
-    // ── 连接需求：按速率增长 ──
+    // ── 连接需求：非线性增长 ──
     const lastMsg = opts.getLastMessage ? opts.getLastMessage() : null;
-    const cRate = opts.connectionRateFn
+    const baseRate = opts.connectionRateFn
       ? opts.connectionRateFn(lastMsg)
       : 0.0007;
+
+    // 加速度：越久没消息，焦虑越猛烈
+    const accelFactor = rates.connectionAccel > 0
+      ? Math.pow(1 + state.connection, rates.connectionAccel)
+      : 1;
+    const effectiveRate = baseRate * accelFactor;
+
     state.connection = clamp(
-      state.connection + cRate * mins,
+      state.connection + effectiveRate * mins,
       axes.connection[0],
       axes.connection[1]
     );
@@ -144,18 +167,32 @@ function createJiwen(opts) {
       }
     }
 
-    // ── 骄傲：缓慢回归 0 ──
-    if (state.pride > 0) {
-      state.pride = Math.max(0, state.pride - rates.prideRegress * mins);
-    } else if (state.pride < 0) {
-      state.pride = Math.min(0, state.pride + rates.prideRegress * mins);
+    // ── 骄傲：被冷落时防御性升高，否则回归0 ──
+    if (state.connection >= rates.prideDefendThreshold) {
+      // 防御机制：被冷落 → pride 朝 prideDefendTarget 漂移
+      if (state.pride < rates.prideDefendTarget) {
+        state.pride = Math.min(rates.prideDefendTarget, state.pride + rates.prideDefendRate * mins);
+      } else if (state.pride > rates.prideDefendTarget) {
+        state.pride = Math.max(rates.prideDefendTarget, state.pride - rates.prideDefendRate * mins);
+      }
+    } else {
+      // 未触发防御：正常回归 0
+      if (state.pride > 0) {
+        state.pride = Math.max(0, state.pride - rates.prideRegress * mins);
+      } else if (state.pride < 0) {
+        state.pride = Math.min(0, state.pride + rates.prideRegress * mins);
+      }
     }
 
-    // ── 情绪基调：缓慢回归 0 ──
+    // ── 情绪基调：想念越强烈，坏情绪越难消散 ──
+    const moodRegressRate = state.connection >= rates.moodLockThreshold
+      ? rates.moodRegress * rates.moodLockFactor
+      : rates.moodRegress;
+
     if (state.mood > 0) {
-      state.mood = Math.max(0, state.mood - rates.moodRegress * mins);
+      state.mood = Math.max(0, state.mood - moodRegressRate * mins);
     } else if (state.mood < 0) {
-      state.mood = Math.min(0, state.mood + rates.moodRegress * mins);
+      state.mood = Math.min(0, state.mood + moodRegressRate * mins);
     }
 
     state.lastTick = now;
@@ -167,7 +204,7 @@ function createJiwen(opts) {
         `[积温] tick ${mins}min | ` +
         `c:${state.connection.toFixed(2)} p:${state.pride.toFixed(2)} ` +
         `m:${state.mood.toFixed(2)} i:${state.immersion.toFixed(2)} | ` +
-        `触发: ${triggers.map(t => t.action).join(', ')}`
+        `触发: ${triggers.map(t => t.action + (t.reason ? '(' + t.reason + ')' : '')).join(', ')}`
       );
     }
 
@@ -181,6 +218,7 @@ function createJiwen(opts) {
     const c = state.connection;
     const p = state.pride;
     const i = state.immersion;
+    const m = state.mood;
 
     if (c >= thresholds.observation && c < thresholds.considerContact) {
       triggers.push({
@@ -215,14 +253,36 @@ function createJiwen(opts) {
       });
     }
 
+    // 低情绪自我调节：心情差时主动找事做（与 pride_block 并列）
+    if (m <= thresholds.moodActivity) {
+      // 避免重复：如果已经触发了 pride_block 的 find_activity，不重复
+      const alreadyFinding = triggers.some(t => t.action === 'find_activity');
+      if (!alreadyFinding && i < 0.3) {
+        triggers.push({
+          action: 'find_activity',
+          reason: 'low_mood',
+          urgency: Math.min(1, Math.abs(m) / 1),
+        });
+      }
+    }
+
     return triggers;
   }
 
-  // ── 外部行为更新沉浸度 ──────────
+  // ── 外部行为更新沉浸度（同时部分缓解连接需求） ──
   async function setActivity(type, label) {
     await ensureLoaded();
     state.lastActivity = { type, label, at: new Date().toISOString() };
     state.immersion = immersionMap[type] || 0.2;
+
+    // 做事情能缓解一点连接需求，但不能替代对方回复
+    if (rates.activityConnectionRelief > 0) {
+      state.connection = Math.max(
+        axes.connection[0],
+        state.connection - rates.activityConnectionRelief
+      );
+    }
+
     await save();
   }
 
