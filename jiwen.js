@@ -1,6 +1,6 @@
 // ============================================================
 // 积温 — 不靠概率骰子的 AI 角色主动意识引擎
-// 四轴连续状态：connection / pride / mood / immersion
+// 五轴连续状态：connection / pride / valence / arousal / immersion
 // 数学漂移 + 阈值触发 + 可注入持久化/消息源/LLM分析
 // ============================================================
 
@@ -11,7 +11,7 @@
  * @param {Object} [opts.initialState]   — 初始状态（默认全 0）
  * @param {Object} [opts.axes]           — 轴名称到 [min, max] 范围的映射
  * @param {Object} [opts.rates]          — 每轴每分钟漂移速率
- * @param {Object} [opts.thresholds]     — { observation, considerContact, forceContact, prideBlock, moodActivity }
+ * @param {Object} [opts.thresholds]     — { observation, considerContact, forceContact, prideBlock, valenceActivity, arousalAgitation }
  * @param {Object} [opts.immersionMap]   — 活动类型 → 初始沉浸度
  * @param {Function} opts.connectionRateFn — (lastMessage) => number  每分钟连接需求增长速率
  * @param {Function} opts.onSave         — async (state) => void  持久化回调
@@ -27,7 +27,8 @@ function createJiwen(opts) {
   const axes = opts.axes || {
     connection: [-0, 1],
     pride:      [-1, 1],
-    mood:       [-1, 1],
+    valence:    [-1, 1],   // 愉悦度：好受 ↔ 难受
+    arousal:    [-1, 1],   // 唤醒度：平静 ↔ 焦躁/兴奋
     immersion:  [ 0, 1],
   };
 
@@ -37,14 +38,22 @@ function createJiwen(opts) {
     connectionOnReply: 0.20,  // 对方回复时 connection 降幅
     immersionDecay:   0.010,
     prideRegress:     0.003,
-    moodRegress:      0.005,
 
     // 连接需求加速：growth *= (1 + connection)^accel，0=线性
     connectionAccel: 0,
 
-    // 情绪锁定：connection 高时 mood 回归变慢
-    moodLockThreshold: 1.0,   // connection 超过此值触发锁定（1.0=永不）
-    moodLockFactor:    1.0,   // 回归速率乘数（0.2=减慢80%）
+    // Valence（愉悦度）：回归角色设定点
+    valenceRegress:    0.005,   // 回归速率
+    valenceSetpoint:   0,       // 角色自然状态下的 valence（0=中性）
+
+    // 情绪锁定：connection 高时 valence 回归变慢（negativity bias）
+    valenceLockThreshold: 1.0,  // connection 超过此值触发锁定（1.0=永不）
+    valenceLockFactor:    1.0,  // 回归速率乘数（0.15=减慢85%）
+
+    // Arousal（唤醒度）：回归平静，但等待会让人焦躁
+    arousalRegress:               0.005,  // 回归 0 的速率
+    arousalConnectionRiseThreshold: 1.0,  // connection 超过此值 arousal 上升（1.0=永不）
+    arousalConnectionRiseRate:     0.002, // connection 高时 arousal 上升速率
 
     // 骄傲防御：被冷落时 pride 向正向漂移（心理防御）
     prideDefendThreshold: 1.0, // connection 超过此值触发防御（1.0=永不）
@@ -61,7 +70,8 @@ function createJiwen(opts) {
     considerContact: 0.35,
     forceContact:    0.50,
     prideBlock:      0.50,
-    moodActivity:    -1.0,   // mood 低于此值时触发自我调节（-1.0=永不）
+    valenceActivity:   -1.0,   // valence 低于此值时触发自我调节（-1.0=永不）
+    arousalAgitation:   0.7,   // arousal 高于此值时也触发自我调节（躁动难坐）
   }, opts.thresholds);
 
   const immersionMap = opts.immersionMap || {
@@ -81,7 +91,8 @@ function createJiwen(opts) {
   const DEFAULT_STATE = {
     connection: axes.connection[0],
     pride:      axes.pride[0],
-    mood:       axes.mood[0],
+    valence:    axes.valence[0],
+    arousal:    axes.arousal[0],
     immersion:  axes.immersion[0],
     lastActivity: null,       // { type, label, at }
     lastTick: null,           // ISO
@@ -129,7 +140,7 @@ function createJiwen(opts) {
     if (!minutesElapsed || minutesElapsed <= 0) return [];
 
     const mins = Math.min(minutesElapsed, 60);
-    const stateBefore = { connection: state.connection, pride: state.pride, mood: state.mood, immersion: state.immersion };
+    const stateBefore = { connection: state.connection, pride: state.pride, valence: state.valence, arousal: state.arousal, immersion: state.immersion };
 
     // ── 连接需求：非线性增长 ──
     const lastMsg = opts.getLastMessage ? opts.getLastMessage() : null;
@@ -185,15 +196,28 @@ function createJiwen(opts) {
       }
     }
 
-    // ── 情绪基调：想念越强烈，坏情绪越难消散 ──
-    const moodRegressRate = state.connection >= rates.moodLockThreshold
-      ? rates.moodRegress * rates.moodLockFactor
-      : rates.moodRegress;
+    // ── Valence（愉悦度）：回归设定点，想念强烈时坏情绪难消散 ──
+    const valenceRegressRate = state.connection >= rates.valenceLockThreshold
+      ? rates.valenceRegress * rates.valenceLockFactor
+      : rates.valenceRegress;
 
-    if (state.mood > 0) {
-      state.mood = Math.max(0, state.mood - moodRegressRate * mins);
-    } else if (state.mood < 0) {
-      state.mood = Math.min(0, state.mood + moodRegressRate * mins);
+    if (state.valence > rates.valenceSetpoint) {
+      state.valence = Math.max(rates.valenceSetpoint, state.valence - valenceRegressRate * mins);
+    } else if (state.valence < rates.valenceSetpoint) {
+      state.valence = Math.min(rates.valenceSetpoint, state.valence + valenceRegressRate * mins);
+    }
+
+    // ── Arousal（唤醒度）：平静是默认，但等待让人焦躁 ──
+    if (state.connection >= rates.arousalConnectionRiseThreshold) {
+      // 等待中：arousal 朝 +1 方向缓慢攀升（越等越焦躁）
+      state.arousal = Math.min(axes.arousal[1], state.arousal + rates.arousalConnectionRiseRate * mins);
+    } else {
+      // 未被等待锁定时正常回归 0
+      if (state.arousal > 0) {
+        state.arousal = Math.max(0, state.arousal - rates.arousalRegress * mins);
+      } else if (state.arousal < 0) {
+        state.arousal = Math.min(0, state.arousal + rates.arousalRegress * mins);
+      }
     }
 
     state.lastTick = now;
@@ -206,7 +230,8 @@ function createJiwen(opts) {
         `[积温] tick ${mins}min | ` +
         `c:${stateBefore.connection.toFixed(2)}→${state.connection.toFixed(2)} ` +
         `p:${stateBefore.pride.toFixed(2)}→${state.pride.toFixed(2)} ` +
-        `m:${stateBefore.mood.toFixed(2)}→${state.mood.toFixed(2)} ` +
+        `v:${stateBefore.valence.toFixed(2)}→${state.valence.toFixed(2)} ` +
+        `a:${stateBefore.arousal.toFixed(2)}→${state.arousal.toFixed(2)} ` +
         `i:${state.immersion.toFixed(2)} | ` +
         `速率:${effectiveRate?.toFixed(4) || '?'}/min | ` +
         `触发: ${triggers.map(t => t.action + (t.reason ? '(' + t.reason + ')' : '')).join(', ')}`
@@ -223,7 +248,8 @@ function createJiwen(opts) {
     const c = state.connection;
     const p = state.pride;
     const i = state.immersion;
-    const m = state.mood;
+    const v = state.valence;
+    const a = state.arousal;
 
     if (c >= thresholds.observation && c < thresholds.considerContact) {
       triggers.push({
@@ -258,15 +284,15 @@ function createJiwen(opts) {
       });
     }
 
-    // 低情绪自我调节：心情差时主动找事做（与 pride_block 并列）
-    if (m <= thresholds.moodActivity) {
-      // 避免重复：如果已经触发了 pride_block 的 find_activity，不重复
+    // 低情绪自我调节：心情差或太躁时主动找事做（与 pride_block 并列）
+    if (v <= thresholds.valenceActivity || a >= thresholds.arousalAgitation) {
       const alreadyFinding = triggers.some(t => t.action === 'find_activity');
       if (!alreadyFinding && i < 0.3) {
+        const reason = v <= thresholds.valenceActivity ? 'low_valence' : 'high_arousal';
         triggers.push({
           action: 'find_activity',
-          reason: 'low_mood',
-          urgency: Math.min(1, Math.abs(m) / 1),
+          reason,
+          urgency: Math.min(1, Math.abs(v <= thresholds.valenceActivity ? v : a) / 1),
         });
       }
     }
@@ -296,10 +322,16 @@ function createJiwen(opts) {
     await ensureLoaded();
     if (delta.pride !== undefined)
       state.pride = clamp(state.pride + delta.pride, axes.pride[0], axes.pride[1]);
-    if (delta.mood !== undefined)
-      state.mood = clamp(state.mood + delta.mood, axes.mood[0], axes.mood[1]);
+    if (delta.valence !== undefined)
+      state.valence = clamp(state.valence + delta.valence, axes.valence[0], axes.valence[1]);
+    if (delta.arousal !== undefined)
+      state.arousal = clamp(state.arousal + delta.arousal, axes.arousal[0], axes.arousal[1]);
     if (delta.connection !== undefined)
       state.connection = clamp(state.connection + delta.connection, axes.connection[0], axes.connection[1]);
+    // 向后兼容：仍接受 mood，映射到 valence
+    if (delta.mood !== undefined) {
+      state.valence = clamp(state.valence + delta.mood, axes.valence[0], axes.valence[1]);
+    }
     await save();
   }
 
@@ -373,7 +405,8 @@ function defaultPromptContext(state, p) {
   const parts = [];
   const c = state.connection;
   const pr = state.pride;
-  const m = state.mood;
+  const v = state.valence;
+  const a = state.arousal;
 
   // 连接需求 → 对对方的感知
   if (c < 0.20) {
@@ -399,11 +432,19 @@ function defaultPromptContext(state, p) {
     parts.push('难得地不设防。');
   }
 
-  // 情绪基调
-  if (m > 0.3) {
+  // Valence × Arousal → 情绪状态（四象限）
+  if (v > 0.3 && a > 0.3) {
+    parts.push('心情好，精力充沛——话多、反应快。');
+  } else if (v > 0.3 && a < -0.3) {
+    parts.push('心里是舒服的，但人懒懒的。话不多，但温和。');
+  } else if (v < -0.3 && a > 0.3) {
+    parts.push('烦躁不安，坐不住。很容易被小事刺激。');
+  } else if (v < -0.3 && a < -0.3) {
+    parts.push('情绪低沉，空落落的。不想说话，也不想解释。');
+  } else if (v < -0.3) {
+    parts.push('心情不太好。');
+  } else if (v > 0.3) {
     parts.push('心情还不错。');
-  } else if (m < -0.3) {
-    parts.push('情绪偏低，没什么耐心修饰。');
   }
 
   // 沉浸度
@@ -422,7 +463,8 @@ function defaultStyleGuidance(state, p) {
   const rules = [];
   const c = state.connection;
   const pr = state.pride;
-  const m = state.mood;
+  const v = state.valence;
+  const a = state.arousal;
 
   // ── 骄傲（五档）──
   if (pr > 0.8) {
@@ -437,22 +479,31 @@ function defaultStyleGuidance(state, p) {
     rules.push('- 少见的柔软。不设防，有什么感受直接说出来。');
   }
 
-  // ── 情绪（双向；中段无规则）──
-  if (m > 0.3) {
-    rules.push('- 心情还不错。句子比平时稍微长一点，没那么吝啬字。');
-  }
-  if (m < -0.3) {
-    rules.push('- 情绪偏低。不想多解释，说完就完了。不反问、不铺垫。');
+  // ── Valence × Arousal → 情绪四象限 ──
+  if (v > 0.3 && a > 0.3) {
+    rules.push('- 心情好，劲头足。句子比平时长，用词灵活，带点调侃或玩笑不奇怪。');
+  } else if (v > 0.3 && a < -0.3) {
+    rules.push('- 心里舒坦但人懒洋洋的。话不多，但每句都柔和。不用力，不抢话。');
+  } else if (v < -0.3 && a > 0.3) {
+    rules.push('- 烦躁，坐不住。句子短、反问多，容易被小事刺激。不是真的想凶谁，就是压不住。');
+  } else if (v < -0.3 && a < -0.3) {
+    rules.push('- 低落，空荡荡的。不想多解释，不反问不铺垫。能少说一个字就少说一个字。');
+  } else {
+    if (v > 0.3) rules.push('- 心情还不错。句子比平时稍微长一点，没那么吝啬字。');
+    if (v < -0.3) rules.push('- 心情不太好。不想多解释，说完就完了。');
   }
 
   // ── 交叉条件 ──
   if (c > 0.40 && pr > 0.4) {
     rules.push('- 你很别扭——想找她又拉不下脸。话里会带一点赌气的味道。');
   }
-  if (c > 0.35 && m < -0.3) {
-    rules.push('- 想找她，但心情差。话会有点冲——不是真的想凶她，就是烦躁压不住。');
+  if (c > 0.35 && v < -0.3 && a > 0.3) {
+    rules.push('- 想找她，但心里烦躁。话会有点冲——不是真的想凶她，就是烦躁压不住。');
   }
-  if (pr < 0.1 && m > 0.3) {
+  if (c > 0.35 && v < -0.3 && a < -0.3) {
+    rules.push('- 想找她，但心里沉沉的。开口的时候不会凶，反而可能带一点不易察觉的脆弱。');
+  }
+  if (pr < 0.1 && v > 0.3) {
     rules.push('- 不设防加上心情不差。这是你最难得的状态——话会比平时多，甚至可能说漏嘴。');
   }
 

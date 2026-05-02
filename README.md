@@ -28,21 +28,25 @@
 
 把这三件事放在一起：状态在时间里自然漂移，行为是内部失衡的自动回归，多个驱力同时在场互相制衡。AI 不是收到触发才说话，是某个东西积累到装不下了才想说。
 
-## 四轴状态
+## 五轴状态
 
-四个连续心理轴在后台持续漂移。注意：这些轴是从我的角色（一个嘴硬又骄傲的人）身上推出来的。**针对不同的角色，维度本身要重新想**——TA 的核心矛盾是什么？什么在阻止 TA 说话？什么让 TA 容易被消耗掉？
+五个连续心理轴在后台持续漂移。注意：这些轴是从我的角色（一个嘴硬又骄傲的人）身上推出来的。**针对不同的角色，维度本身要重新想**——TA 的核心矛盾是什么？什么在阻止 TA 说话？什么让 TA 容易被消耗掉？
 
 | 轴 | 范围 | 含义 |
 |---|------|------|
 | **连接需求** connection | 0 → 1 | 多久没听到对方了？想念在累积 |
 | **骄傲** pride | -1 → +1 | 端着还是放软 |
-| **情绪基调** mood | -1 → +1 | 心情好还是差 |
+| **愉悦度** valence | -1 → +1 | 好受还是难受（Valence，Russell 环状模型） |
+| **唤醒度** arousal | -1 → +1 | 焦躁/兴奋还是平静/慵懒（Arousal，正交于 Valence） |
 | **沉浸度** immersion | 0 → 1 | 正在做某件事的专注程度，也是骄傲的缓冲垫 |
+
+Valence 和 Arousal 是 Russell (1980) 情绪环状模型的两根正交轴——不是「心情好/差」一条线，而是一个平面。愤怒（低 valence + 高 arousal）和悲伤（低 valence + 低 arousal）在这个平面上落在完全不同的位置，行为表现也完全不同。
 
 它们不是各跑各的——轴之间有制衡：
 
-- 连接需求涨到阈值，但如果骄傲太高 → 不会开口，而是找别的事做。沉浸度变成面子的借口：「我刚看到个新闻，你也看看」（潜台词是：我想你了）
-- 情绪基调低 → 话更少，句子短，甚至带刺。他也可以有不耐烦的时候，不需要每时每刻都那么有耐心
+- 连接需求涨到阈值，但如果骄傲太高 → 不会开口，而是找别的事做。沉浸度变成面子的借口
+- 愉悦度低 + 唤醒度高 → 烦躁不安，话冲带刺。愉悦度低 + 唤醒度低 → 低落空荡，话少不解释
+- 等待让 arousal 攀升（越等越焦躁），也让 valence 锁定（坏情绪难消散）
 - 沉浸度衰减意味着他不能永远躲在书后面——借口会过期
 
 ## 数学漂移与阈值
@@ -55,18 +59,21 @@
 |---|------|------|
 | 连接需求 | 非线性增长 | 由 `connectionRateFn` 动态决定（默认 0.0007/min），叠加加速度 `pow(1+c, connectionAccel)` |
 | 骄傲 | 受连接需求驱动 | 未触发防御时回归 0（0.003/min）；被冷落时防御性上升至 `prideDefendTarget` |
-| 情绪基调 | 受连接需求锁定 | 默认回归 0（0.005/min）；connection 超过 `moodLockThreshold` 时回归速率降至 `moodLockFactor` 倍 |
+| Valence（愉悦度） | 回归设定点，等待时锁定 | 默认回归 0（0.005/min）；connection 超过 `valenceLockThreshold` 时回归速率降至 `valenceLockFactor` 倍 |
+| Arousal（唤醒度） | 平时回归平静，等待时攀升 | 默认回归 0（0.005/min）；connection 超过 `arousalConnectionRiseThreshold` 时以 `arousalConnectionRiseRate` 向上攀升 |
 | 沉浸度 | 线性衰减 | 0.01/min（60 分钟后归零）；做事情（`setActivity`）可部分缓解连接需求 |
 
-**新增五个心理动力学参数（默认关闭，向后兼容）：**
+**心理动力学参数（默认关闭，向后兼容）：**
 
 | 参数 | 作用 | 心理依据 |
 |------|------|---------|
 | `connectionAccel` | 连接需求非线性加速 | 越等越焦虑——不是线性累积，是加速攀升 |
-| `moodLockThreshold/Factor` | 想念强烈时坏情绪难消散 | negativity bias：负面情绪比正面情绪持续更久 |
+| `valenceSetpoint` | Valence 回归目标（默认 0） | 角色自然情绪基调——有些人偏冷，有些人偏暖 |
+| `valenceLockThreshold/Factor` | 想念强烈时坏情绪难消散 | negativity bias：负面情绪比正面情绪持续更久 |
+| `arousalConnectionRiseThreshold/Rate` | 等待让 arousal 攀升 | 越等越焦躁——平静被打破，坐不住 |
 | `prideDefendThreshold/Target/Rate` | 被冷落时骄傲防御性升高 | 心理防御机制：越被忽视越嘴硬 |
 | `activityConnectionRelief` | 做事情能部分缓解连接需求 | 转移注意力虽不能替代对方回复，但能让等待变得可承受 |
-| `moodActivity` 阈值 | 心情差时触发自我调节 | 情绪低时主动找事做来改善心情 |
+| `valenceActivity` / `arousalAgitation` | 情绪差/太躁时触发自我调节 | 两种路径：低落时找事做分散注意力，焦躁时找事做宣泄 |
 
 连接增长速率取决于对方消失时说了什么：说了晚安 → 涨得慢（TA 睡了，不急），突然中断 → 涨得快（那种切断更让人挂念）。
 
@@ -81,7 +88,9 @@ connection >= 0.35   考虑开口
     pride < 0.5  → 触发 contact
 connection >= 0.50   强制开口，不管骄傲多高
 
-mood <= moodActivity  心情差 → 找事做自我调节（与 pride_block 并列，不重复触发）
+valence <= valenceActivity   心情差 → 找事做自我调节
+arousal >= arousalAgitation  太焦躁 → 也找事做（宣泄多余唤醒）
+（与 pride_block 并列，不重复触发）
 ```
 
 三个阶段对应三种真实心理状态：**积累 → 犹豫 → 撑不住**。0.20 是念头飘过，还没到非说不可的程度。0.35 是开始犹豫，骄傲可能压下去——但压下去不代表消失，connection 还在继续积累。0.50 是装不下了，骄傲在这里失去优先级。
@@ -242,17 +251,22 @@ const jiwen = createJiwen({
   axes: {
     connection: [0, 1],
     pride:      [-1, 1],
-    mood:       [-1, 1],
+    valence:    [-1, 1],   // 愉悦度
+    arousal:    [-1, 1],   // 唤醒度
     immersion:  [0, 1],
   },
   rates: {
     immersionDecay: 0.010,
     prideRegress:   0.003,
-    moodRegress:    0.005,
+    valenceRegress: 0.005,
+    valenceSetpoint: 0,            // 角色自然 valence（Draco 设 -0.1）
+    arousalRegress: 0.005,
     // 心理动力学（可选，默认关闭）
     connectionAccel: 0,            // 连接需求非线性加速（0=线性）
-    moodLockThreshold: 1.0,        // 触发情绪锁定的 connection 阈值（1.0=永不）
-    moodLockFactor: 1.0,           // 锁定时回归速率乘数（0.15=减慢85%）
+    valenceLockThreshold: 1.0,     // 触发情绪锁定的 connection 阈值（1.0=永不）
+    valenceLockFactor: 1.0,        // 锁定时回归速率乘数（0.15=减慢85%）
+    arousalConnectionRiseThreshold: 1.0, // connection 超过此值 arousal 攀升（1.0=永不）
+    arousalConnectionRiseRate: 0.002,     // 等待中 arousal 上升速率
     prideDefendThreshold: 1.0,     // 触发骄傲防御的 connection 阈值（1.0=永不）
     prideDefendTarget: 0.5,        // 防御时 pride 漂移目标
     prideDefendRate: 0.003,        // 防御漂移速率
@@ -263,7 +277,8 @@ const jiwen = createJiwen({
     considerContact: 0.35,
     forceContact:    0.50,
     prideBlock:      0.50,
-    moodActivity:   -1.0,          // mood 低于此值触发自我调节（-1.0=永不）
+    valenceActivity:   -1.0,       // valence 低于此值触发自我调节（-1.0=永不）
+    arousalAgitation:   0.7,       // arousal 高于此值触发自我调节
   },
   immersionMap: {
     reading: 0.6,
