@@ -129,6 +129,7 @@ function createJiwen(opts) {
     if (!minutesElapsed || minutesElapsed <= 0) return [];
 
     const mins = Math.min(minutesElapsed, 60);
+    const stateBefore = { connection: state.connection, pride: state.pride, mood: state.mood, immersion: state.immersion };
 
     // ── 连接需求：非线性增长 ──
     const lastMsg = opts.getLastMessage ? opts.getLastMessage() : null;
@@ -140,7 +141,7 @@ function createJiwen(opts) {
     const accelFactor = rates.connectionAccel > 0
       ? Math.pow(1 + state.connection, rates.connectionAccel)
       : 1;
-    const effectiveRate = baseRate * accelFactor;
+    let effectiveRate = baseRate * accelFactor;
 
     state.connection = clamp(
       state.connection + effectiveRate * mins,
@@ -197,13 +198,17 @@ function createJiwen(opts) {
 
     state.lastTick = now;
 
+    // ── 日志：状态变化（有阈值触发时打印完整 diff）──
     const triggers = checkThresholds();
 
     if (triggers.length > 0) {
       console.log(
         `[积温] tick ${mins}min | ` +
-        `c:${state.connection.toFixed(2)} p:${state.pride.toFixed(2)} ` +
-        `m:${state.mood.toFixed(2)} i:${state.immersion.toFixed(2)} | ` +
+        `c:${stateBefore.connection.toFixed(2)}→${state.connection.toFixed(2)} ` +
+        `p:${stateBefore.pride.toFixed(2)}→${state.pride.toFixed(2)} ` +
+        `m:${stateBefore.mood.toFixed(2)}→${state.mood.toFixed(2)} ` +
+        `i:${state.immersion.toFixed(2)} | ` +
+        `速率:${effectiveRate?.toFixed(4) || '?'}/min | ` +
         `触发: ${triggers.map(t => t.action + (t.reason ? '(' + t.reason + ')' : '')).join(', ')}`
       );
     }
