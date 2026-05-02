@@ -2,7 +2,7 @@
 
 ## 这是什么
 
-积温是一个**纯数学引擎**——四轴连续状态（connection/pride/mood/immersion）在后台漂移，到阈值触发行为。不靠概率骰子。
+积温是一个**纯数学引擎**——五轴连续状态（connection/pride/valence/arousal/immersion）在后台漂移，到阈值触发行为。不靠概率骰子。
 
 开源在 `github.com/ClaraShafiq/jiwen`。零依赖，纯 JS。任何人可以拿去给自己的 AI 角色用。
 
@@ -36,6 +36,8 @@ Sanctuary/services/state.js  ← Draco 适配层（私密）
 ```
 jiwen/
 ├── jiwen.js       # 核心引擎 createJiwen(opts)
+├── jiwen.test.js  # 测试套件（29项，node jiwen.test.js）
+├── simulate.js    # 参数模拟器（事件线 → 轨迹 CSV + 诊断列）
 ├── README.md      # 架构文档 + 快速开始 + API
 ├── package.json   # npm 包
 └── CLAUDE.md      # 本文件
@@ -51,5 +53,8 @@ jiwen/
 ## 常见坑
 
 - `resetConnection()` 直接清零，只应在对方回复后调用。开口后应使用 `applyDelta` 做部分降低
-- 引擎的 `connectionOnReply` 默认 0.20，可在 `rates` 中覆盖
+- `connectionOnReply` 已移除。连接需求降幅现由外部 LLM 分析通过 `applyDelta` 注入（见 `analyzeChatSegment` 兜底 delta）
+- 引擎不提供 `initialState` 选项——初始状态只能通过 `onLoad` 返回值注入。测试中需用 `onLoad` 返回中性初始状态
+- `accelDelay` 判断依据是「距上次消息的真实分钟数」（`Date.now() - msg.timestamp`），不是 tick 分钟数。无历史消息时（`minutesSinceLastMsg = Infinity`），加速立即生效
 - 默认的 prompt context / style guidance 是通用中文文案，不够个性化。实际使用时应该覆盖
+- 调参前跑 `simulate.js` 对比多组参数，重点看 `effective_pride` 诊断列是否为 0

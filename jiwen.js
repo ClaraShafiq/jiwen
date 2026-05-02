@@ -2,7 +2,12 @@
 // 积温 — 不靠概率骰子的 AI 角色主动意识引擎
 // 五轴连续状态：connection / pride / valence / arousal / immersion
 // 数学漂移 + 阈值触发 + 可注入持久化/消息源/LLM分析
+// 附带 simulate.js 参数模拟器 + jiwen.test.js 测试套件（29项）
 // ============================================================
+//
+// 0.2.0 — 时间分段加速 (accelDelay) + valence×connection 耦合
+//         + 移除 connectionOnReply（改由 LLM delta 接管）
+//         + simulate.js 参数模拟器 + 测试套件
 
 /**
  * 创建一个积温引擎实例。
@@ -35,11 +40,13 @@ function createJiwen(opts) {
   // ── 衰减 / 回归速率（每分钟） ──
   const rates = Object.assign({
     connectionGrowth: null, // 由 connectionRateFn 动态决定
-    connectionOnReply: 0.20,  // 对方回复时 connection 降幅
+    connectionOnReply: 0.20,  // [已弃用] 对方回复时 connection 降幅（现由 LLM delta 接管）
     immersionDecay:   0.010,
     prideRegress:     0.003,
 
-    // 连接需求加速：growth *= (1 + connection)^accel，0=线性
+    // 时间分段加速：距上次消息 < accelDelay 分钟时线性增长（accel=1），
+    // 超过后才启用 connectionAccel。默认 0 = 立即加速，向后兼容
+    accelDelay: 0,
     connectionAccel: 0,
 
     // Valence（愉悦度）：回归角色设定点
@@ -49,6 +56,13 @@ function createJiwen(opts) {
     // 情绪锁定：connection 高时 valence 回归变慢（negativity bias）
     valenceLockThreshold: 1.0,  // connection 超过此值触发锁定（1.0=永不）
     valenceLockFactor:    1.0,  // 回归速率乘数（0.15=减慢85%）
+
+    // Valence → connection 增长倍率：轻度不开心时想要安慰（>1.0），
+    // 严重低落时自我封闭（<1.0）。默认关闭，向后兼容
+    valenceConnectBoost:            0,   // 倍率值（如 1.4 = 增长 +40%）
+    valenceConnectBoostThreshold:  -0.2, // valence 低于此值时触发 boost
+    valenceConnectDampen:           0,   // 倍率值（如 0.4 = 增长 -60%）
+    valenceConnectDampenThreshold: -0.4, // valence 低于此值时触发 dampen
 
     // Arousal（唤醒度）：回归平静，但等待会让人焦躁
     arousalRegress:               0.005,  // 回归 0 的速率
@@ -98,7 +112,6 @@ function createJiwen(opts) {
     lastTick: null,           // ISO
     lastChatAnalysis: null,   // ISO
     lastChatMessageId: null,
-    _lastMsgId: null,         // 用于判断是否有新消息
   };
 
   let state = { ...DEFAULT_STATE };
@@ -142,17 +155,34 @@ function createJiwen(opts) {
     const mins = Math.min(minutesElapsed, 60);
     const stateBefore = { connection: state.connection, pride: state.pride, valence: state.valence, arousal: state.arousal, immersion: state.immersion };
 
-    // ── 连接需求：非线性增长 ──
+    // ── 连接需求：时间分段加速 + valence 耦合 ──
     const lastMsg = opts.getLastMessage ? opts.getLastMessage() : null;
     const baseRate = opts.connectionRateFn
       ? opts.connectionRateFn(lastMsg)
       : 0.0007;
 
-    // 加速度：越久没消息，焦虑越猛烈
-    const accelFactor = rates.connectionAccel > 0
+    // 距上次消息的分钟数（用于时间分段判断）
+    let minutesSinceLastMsg = Infinity;
+    if (lastMsg && lastMsg.timestamp) {
+      minutesSinceLastMsg = (Date.now() - new Date(lastMsg.timestamp).getTime()) / 60000;
+    }
+
+    // 时间分段：accelDelay 分钟内线性增长，之后启用加速度
+    const accelDelay = rates.accelDelay || 0;
+    const useAccel = rates.connectionAccel > 0 && minutesSinceLastMsg >= accelDelay;
+    const accelFactor = useAccel
       ? Math.pow(1 + state.connection, rates.connectionAccel)
       : 1;
-    let effectiveRate = baseRate * accelFactor;
+
+    // Valence → connection 增长率耦合
+    let valenceMultiplier = 1;
+    if (rates.valenceConnectDampen > 0 && state.valence < rates.valenceConnectDampenThreshold) {
+      valenceMultiplier = rates.valenceConnectDampen;
+    } else if (rates.valenceConnectBoost > 0 && state.valence < rates.valenceConnectBoostThreshold) {
+      valenceMultiplier = rates.valenceConnectBoost;
+    }
+
+    const effectiveRate = baseRate * accelFactor * valenceMultiplier;
 
     state.connection = clamp(
       state.connection + effectiveRate * mins,
@@ -160,11 +190,8 @@ function createJiwen(opts) {
       axes.connection[1]
     );
 
-    // 如果有新消息，压回连接需求
-    if (lastMsg && lastMsg.id && lastMsg.id > (state._lastMsgId || 0)) {
-      state.connection = Math.max(axes.connection[0], state.connection - rates.connectionOnReply);
-      state._lastMsgId = lastMsg.id;
-    }
+    // connectionOnReply 自动扣除已移除。
+    // 连接需求降幅现由外部 LLM 分析（如 analyzeChatSegment）通过 applyDelta 注入。
 
     // ── 沉浸度：衰减 ──
     if (state.lastActivity) {

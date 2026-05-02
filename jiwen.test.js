@@ -98,7 +98,7 @@ describe('单调性 Monotonicity', () => {
     }
   });
 
-  it('收到新消息后 connection 下降', async () => {
+  it('收到新消息后 applyDelta 可降低 connection', async () => {
     const { instance, setLastMessage } = makeTestJiwen();
     await instance.load();
 
@@ -106,11 +106,13 @@ describe('单调性 Monotonicity', () => {
     const before = (await instance.getState()).connection;
     assert(before > 0, 'connection 应该已有积累');
 
+    // connectionOnReply 已移除，降幅由 LLM 分析通过 applyDelta 注入
     setLastMessage('我回来了');
+    await instance.applyDelta({ connection: -0.15 });
     await instance.tick(5);
 
     const after = (await instance.getState()).connection;
-    assert(after < before, `新消息后 connection 应下降: ${before} → ${after}`);
+    assert(after < before, `applyDelta 后 connection 应下降: ${before} → ${after}`);
   });
 
   it('resetConnection 将 connection 归零', async () => {
@@ -182,9 +184,7 @@ describe('边界 Boundary', () => {
   });
 
   it('connection 不倒灌到负值', async () => {
-    const { instance } = makeTestJiwen({
-      rates: { connectionOnReply: 0.5 },
-    });
+    const { instance } = makeTestJiwen();
     await instance.load();
     await instance.tick(5);
 
@@ -360,34 +360,35 @@ describe('诊断列 Diagnostics', () => {
     assert(d4.effective_pride === false);
   });
 
-  it('effective_pride 在 Draco 默认参数下窗口极小', async () => {
-    // 用 Draco 实际参数
+  it('effective_pride 在新 Draco 参数下存在有效拦截窗口', async () => {
+    // 用新 Draco 实际参数（accelDelay=30, accel=1.5, prideBlock=0.25）
     const { instance } = makeTestJiwen({
       rates: {
-        connectionAccel: 2.5,
-        prideDefendThreshold: 0.25,
-        prideDefendTarget: 0.55,
-        prideDefendRate: 0.006,
+        connectionAccel: 1.5,
+        accelDelay: 30,
+        prideDefendThreshold: 0.12,
+        prideDefendTarget: 0.45,
+        prideDefendRate: 0.018,
       },
       thresholds: {
         observation: 0.12,
         considerContact: 0.22,
         forceContact: 0.35,
-        prideBlock: 0.50,
+        prideBlock: 0.25,
         valenceActivity: -0.25,
         arousalAgitation: 0.55,
       },
-      connectionRateFn: () => 0.009,
+      connectionRateFn: () => 0.007,
     });
     await instance.load();
 
     const thresholds = {
       observation: 0.12, considerContact: 0.22, forceContact: 0.35,
-      prideBlock: 0.50, valenceActivity: -0.25, arousalAgitation: 0.55,
+      prideBlock: 0.25, valenceActivity: -0.25, arousalAgitation: 0.55,
     };
 
     const trajectory = [];
-    for (let min = 0; min <= 40; min += 1) {
+    for (let min = 0; min <= 50; min += 1) {
       await instance.tick(1);
       const s = await instance.getState();
       trajectory.push({ time: min, connection: s.connection, pride: s.pride,
@@ -399,14 +400,11 @@ describe('诊断列 Diagnostics', () => {
     const finalConn = trajectory[trajectory.length - 1].connection;
     const finalPride = trajectory[trajectory.length - 1].pride;
 
-    console.log(`\n     [Draco参数 40min] c:0→${finalConn.toFixed(3)} p:0→${finalPride.toFixed(3)} | effective_pride:${effCount}次 force:${forceCount}次`);
+    console.log(`\n     [新Draco参数 50min] c:0→${finalConn.toFixed(3)} p:0→${finalPride.toFixed(3)} | effective_pride:${effCount}次 force:${forceCount}次`);
 
-    if (effCount === 0) {
-      console.log('     ⚠  Draco 当前参数下 effective_pride 窗口为 0！pride 从未生效拦截。');
-    }
-
-    // force_contact 应该触发（connection 必然越过 0.35）
-    assert(forceCount > 0, '至少应触发 force_contact');
+    // 新参数下 pride 应在 considerContact→forceContact 间形成有效拦截窗口
+    assert(effCount > 0, '新参数下 effective_pride 应 > 0（pride 能在 considerContact 窗口内拦截）');
+    assert(forceCount > 0, 'connection 最终应越过 forceContact');
   });
 });
 
@@ -491,7 +489,143 @@ describe('模拟引擎 Simulate', () => {
 });
 
 // ============================================================
-// 6. 回归测试
+// 6. Connection 重设计验证
+// ============================================================
+describe('Connection 重设计 ConnectionRedesign', () => {
+
+  it('accelDelay 前线性增长，之后加速', async () => {
+    // accelDelay 判断依据是「距上次消息的分钟数」（真实时间），不是 tick 分钟数。
+    // 需要设置一个足够旧的消息时间戳来触发加速。
+    let lastMsg = null;
+    const instance = createJiwen({
+      onSave: async () => {},
+      onLoad: async () => ({ ...NEUTRAL_INIT }),
+      getLastMessage: () => lastMsg,
+      connectionRateFn: () => 0.01,
+      rates: { connectionAccel: 2.0, accelDelay: 30 },
+    });
+    await instance.load();
+
+    // 模拟 Clara 31 分钟前发了最后一条消息 → 已过 accelDelay，加速生效
+    lastMsg = { id: 1, content: '测试', timestamp: new Date(Date.now() - 31 * 60000).toISOString() };
+
+    // 逐分钟 tick，让 accel 因子正确累积（离散近似连续积分）
+    for (let i = 0; i < 30; i++) await instance.tick(1);
+    const s30 = await instance.getState();
+    // 有加速：30min 后应明显高于纯线性 0.30
+    assert(s30.connection > 0.35, `30min 加速后应 > 线性 0.30: ${s30.connection.toFixed(3)}`);
+
+    for (let i = 0; i < 10; i++) await instance.tick(1);
+    const s40 = await instance.getState();
+    assert(s40.connection > 0.50, `40min 加速后应 > 0.50: ${s40.connection.toFixed(3)}`);
+
+    // 对比：accelDelay=0 且无历史消息时，仅依赖 tick 内部的连接加速
+    let lastMsg2 = null;
+    const instanceNoDelay = createJiwen({
+      onSave: async () => {},
+      onLoad: async () => ({ ...NEUTRAL_INIT }),
+      getLastMessage: () => lastMsg2,
+      connectionRateFn: () => 0.01,
+      rates: { connectionAccel: 2.0, accelDelay: 0 },
+    });
+    await instanceNoDelay.load();
+    // accelDelay=0 → 无消息时也立即加速（minutesSinceLastMsg=Infinity >= 0）
+    for (let i = 0; i < 40; i++) await instanceNoDelay.tick(1);
+    const s40NoDelay = await instanceNoDelay.getState();
+    assert(s40NoDelay.connection > 0.50,
+      `accelDelay=0: ${s40NoDelay.connection.toFixed(3)} > 0.50`);
+  });
+
+  it('accelDelay 默认 0 保持向后兼容（立即加速）', async () => {
+    // 不传 accelDelay，默认 0 → 立即加速
+    const { instance } = makeTestJiwen({
+      rates: { connectionAccel: 1.0 },
+      connectionRateFn: () => 0.01,
+    });
+    await instance.load();
+
+    // 逐分钟 tick，让 accel 因子在每步更新
+    for (let i = 0; i < 20; i++) await instance.tick(1);
+    const s = await instance.getState();
+    // 有加速：连续积分 c(20)=e^0.2-1≈0.221，离散近似略低但应 > 线性 0.20
+    assert(s.connection > 0.20, `立即加速应 > 线性 0.20: ${s.connection.toFixed(3)}`);
+  });
+
+  it('valence 轻度不开心时 connection 增长加速（boost）', async () => {
+    const { instance } = makeTestJiwen({
+      rates: {
+        connectionAccel: 0, // 关闭加速，只看 valence 效应
+        valenceConnectBoost: 1.4,
+        valenceConnectBoostThreshold: -0.2,
+      },
+      connectionRateFn: () => 0.01,
+    });
+    await instance.load();
+
+    // 先 tick 10min 记录正常增长
+    await instance.tick(10);
+    const normalGrowth = (await instance.getState()).connection;
+
+    // 重置，设置 valence 到 boost 区间，再 tick 10min
+    await instance.resetConnection();
+    await instance.applyDelta({ valence: -0.3 }); // 低于 -0.2，触发 boost
+    await instance.tick(10);
+    const boostedGrowth = (await instance.getState()).connection;
+
+    assert(boostedGrowth > normalGrowth * 1.2,
+      `boost 增长 ${boostedGrowth.toFixed(3)} 应 > 正常 ${normalGrowth.toFixed(3)} × 1.2`);
+  });
+
+  it('valence 严重低落时 connection 增长减速（dampen）', async () => {
+    const { instance } = makeTestJiwen({
+      rates: {
+        connectionAccel: 0,
+        valenceConnectBoost: 1.4,
+        valenceConnectBoostThreshold: -0.2,
+        valenceConnectDampen: 0.4,
+        valenceConnectDampenThreshold: -0.4,
+      },
+      connectionRateFn: () => 0.01,
+    });
+    await instance.load();
+
+    // 正常增长
+    await instance.tick(10);
+    const normalGrowth = (await instance.getState()).connection;
+
+    // 重度低落
+    await instance.resetConnection();
+    await instance.applyDelta({ valence: -0.5 }); // 低于 -0.4，触发 dampen
+    await instance.tick(10);
+    const dampenedGrowth = (await instance.getState()).connection;
+
+    assert(dampenedGrowth < normalGrowth * 0.7,
+      `dampen 增长 ${dampenedGrowth.toFixed(3)} 应 < 正常 ${normalGrowth.toFixed(3)} × 0.7`);
+  });
+
+  it('valence ≥ 0 时 connection 增长不变（中性倍率）', async () => {
+    const { instance } = makeTestJiwen({
+      rates: {
+        connectionAccel: 0,
+        valenceConnectBoost: 1.4,
+        valenceConnectBoostThreshold: -0.2,
+        valenceConnectDampen: 0.4,
+        valenceConnectDampenThreshold: -0.4,
+      },
+      connectionRateFn: () => 0.01,
+    });
+    await instance.load();
+
+    await instance.applyDelta({ valence: 0.2 }); // > 0，不触发任何耦合
+    await instance.tick(10);
+    const growth = (await instance.getState()).connection;
+    // 10 × 0.01 = 0.10
+    assertClose(growth, 0.10, 0.005, 'valence ≥ 0 时应为基准速率');
+  });
+});
+
+// ============================================================
+// 7. 回归测试
 // ============================================================
 describe('回归 Regression', () => {
 
