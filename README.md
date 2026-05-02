@@ -184,10 +184,8 @@ async function heartbeat(minutesSinceLastTick) {
       const ctx = jiwen.getPromptContext();
       const style = jiwen.getStyleGuidance();
       // 把 ctx 和 style 注入 LLM prompt，生成开口内容...
-      // 注意：不要在这里调 resetConnection()！
-      // 开口只是缓解了一部分紧张，不等于她回应了。
-      // 用 applyDelta 做部分降低，等对方真的回复了再 reset。
-      await jiwen.applyDelta({ connection: -0.35 });
+      // 注意：connection 在这里不降——开口不等于被回复。
+      // 等她真正回应了再调 resetConnection()。
     }
     if (t.action === 'find_activity') {
       await jiwen.setActivity('search', 'AI最新动态');
