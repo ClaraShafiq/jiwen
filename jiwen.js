@@ -91,6 +91,7 @@ function createJiwen(opts) {
   const immersionMap = opts.immersionMap || {
     reading: 0.6,
     search:  0.4,
+    browse_snitch: 0.35,
     browse:  0.35,
     observe: 0.15,
   };
@@ -112,6 +113,7 @@ function createJiwen(opts) {
     lastTick: null,           // ISO
     lastChatAnalysis: null,   // ISO
     lastChatMessageId: null,
+    claraStatus: 'active',     // 'active' | 'busy' | 'away' | 'sleeping' — 由 analyzeChatSegment LLM 分析
   };
 
   let state = { ...DEFAULT_STATE };
@@ -336,7 +338,7 @@ function createJiwen(opts) {
     // 做事情能缓解一点连接需求，但不能替代对方回复
     if (rates.activityConnectionRelief > 0) {
       state.connection = Math.max(
-        axes.connection[0],
+        0.01,  // 防止清零导致死循环（connection 永远到不了阈值）
         state.connection - rates.activityConnectionRelief
       );
     }
@@ -402,6 +404,16 @@ function createJiwen(opts) {
     return state.lastChatMessageId;
   }
 
+  async function setClaraStatus(status) {
+    await ensureLoaded();
+    state.claraStatus = status;
+    await save();
+  }
+
+  function getClaraStatus() {
+    return state.claraStatus || 'active';
+  }
+
   // ── 暴露引擎 ────────────────────
   return {
     load,
@@ -416,6 +428,8 @@ function createJiwen(opts) {
     checkThresholds,
     setLastChatMessageId,
     getLastChatMessageId,
+    setClaraStatus,
+    getClaraStatus,
     // 暴露配置快照（只读），方便外部查看
     config: {
       axes,
