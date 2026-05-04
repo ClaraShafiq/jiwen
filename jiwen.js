@@ -64,10 +64,11 @@ function createJiwen(opts) {
     valenceConnectDampen:           0,   // 倍率值（如 0.4 = 增长 -60%）
     valenceConnectDampenThreshold: -0.4, // valence 低于此值时触发 dampen
 
-    // Arousal（唤醒度）：回归平静，但等待会让人焦躁
-    arousalRegress:               0.005,  // 回归 0 的速率
+    // Arousal（唤醒度）：向设定点漂移，但等待会让人焦躁
+    arousalSetpoint:              0,      // arousal 自然漂移目标（0=中性，负=偏平静）
+    arousalRegress:               0.005,  // 向设定点回归的速率
     arousalConnectionRiseThreshold: 1.0,  // connection 超过此值 arousal 上升（1.0=永不）
-    arousalConnectionRiseRate:     0.002, // connection 高时 arousal 上升速率
+    arousalConnectionRiseRate:     0.002, // connection 高时 arousal 上升速率（与回归竞争）
 
     // 骄傲防御：被冷落时 pride 向正向漂移（心理防御）
     prideDefendThreshold: 1.0, // connection 超过此值触发防御（1.0=永不）
@@ -236,17 +237,32 @@ function createJiwen(opts) {
       state.valence = Math.min(rates.valenceSetpoint, state.valence + valenceRegressRate * mins);
     }
 
-    // ── Arousal（唤醒度）：平静是默认，但等待让人焦躁 ──
+    // ── Arousal（唤醒度）：向设定点漂移 + 等待焦躁（两力竞争）──
+    const arousalSetpoint = rates.arousalSetpoint || 0;
+
+    // 回归力：始终生效，向设定点漂移
+    let arousalRegressForce = 0;
+    if (state.arousal > arousalSetpoint) {
+      arousalRegressForce = -rates.arousalRegress * mins;
+    } else if (state.arousal < arousalSetpoint) {
+      arousalRegressForce = rates.arousalRegress * mins;
+    }
+
+    // 上升力：connection 高时，等待让人焦躁
+    let arousalRiseForce = 0;
     if (state.connection >= rates.arousalConnectionRiseThreshold) {
-      // 等待中：arousal 朝 +1 方向缓慢攀升（越等越焦躁）
-      state.arousal = Math.min(axes.arousal[1], state.arousal + rates.arousalConnectionRiseRate * mins);
+      arousalRiseForce = rates.arousalConnectionRiseRate * mins;
+    }
+
+    // 两力竞争，净效果 = 回归 + 上升
+    const netArousal = state.arousal + arousalRegressForce + arousalRiseForce;
+    // 回归力不会推过设定点（除非上升力在反方向拉）
+    if (arousalRegressForce < 0 && netArousal < arousalSetpoint && arousalRiseForce === 0) {
+      state.arousal = arousalSetpoint;
+    } else if (arousalRegressForce > 0 && netArousal > arousalSetpoint && arousalRiseForce === 0) {
+      state.arousal = arousalSetpoint;
     } else {
-      // 未被等待锁定时正常回归 0
-      if (state.arousal > 0) {
-        state.arousal = Math.max(0, state.arousal - rates.arousalRegress * mins);
-      } else if (state.arousal < 0) {
-        state.arousal = Math.min(0, state.arousal + rates.arousalRegress * mins);
-      }
+      state.arousal = clamp(netArousal, axes.arousal[0], axes.arousal[1]);
     }
 
     state.lastTick = now;
