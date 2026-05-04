@@ -75,6 +75,12 @@ function createJiwen(opts) {
     prideDefendTarget:    0.5, // 防御时 pride 漂移目标
     prideDefendRate:      0.003, // 防御漂移速率
 
+    // Pride × Connection 冲突：想要又端着 → 内心战争加热 arousal
+    prideArousalConflictRate: 0,    // connection≥considerContact 且 pride≥prideBlock 时额外 arousal 升温
+
+    // 盔甲侵蚀：想念太重，维持冷漠太累 → pride 被迫下降
+    prideErosionRate: 0,            // connection≥forceContact 时额外侵蚀 pride 的速率
+
     // 活动缓解：做事情能部分缓解连接需求
     activityConnectionRelief: 0,   // setActivity 时 connection 降幅
   }, opts.rates);
@@ -226,6 +232,13 @@ function createJiwen(opts) {
       }
     }
 
+    // ── 盔甲侵蚀：想念太重，维持冷漠太累 → pride 被迫下降 ──
+    if (rates.prideErosionRate > 0 &&
+        state.connection >= thresholds.forceContact &&
+        state.pride > 0) {
+      state.pride = Math.max(0, state.pride - rates.prideErosionRate * mins);
+    }
+
     // ── Valence（愉悦度）：回归设定点，想念强烈时坏情绪难消散 ──
     const valenceRegressRate = state.connection >= rates.valenceLockThreshold
       ? rates.valenceRegress * rates.valenceLockFactor
@@ -252,6 +265,13 @@ function createJiwen(opts) {
     let arousalRiseForce = 0;
     if (state.connection >= rates.arousalConnectionRiseThreshold) {
       arousalRiseForce = rates.arousalConnectionRiseRate * mins;
+    }
+
+    // Pride × Connection 冲突升温：想要又端着 → 内心战争额外加热 arousal
+    if (rates.prideArousalConflictRate > 0 &&
+        state.connection >= thresholds.considerContact &&
+        state.pride >= thresholds.prideBlock) {
+      arousalRiseForce += rates.prideArousalConflictRate * mins;
     }
 
     // 两力竞争，净效果 = 回归 + 上升
