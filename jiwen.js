@@ -120,6 +120,7 @@ function createJiwen(opts) {
     lastTick: null,           // ISO
     lastChatAnalysis: null,   // ISO
     lastChatMessageId: null,
+    lastDracoMessageId: null,  // 上次Draco回复的消息ID，用于将同批次Clara消息归组
     claraStatus: 'active',     // 'active' | 'busy' | 'away' | 'sleeping' — 由 analyzeChatSegment LLM 分析
   };
 
@@ -440,6 +441,17 @@ function createJiwen(opts) {
     return state.lastChatMessageId;
   }
 
+  async function setLastDracoMessageId(id) {
+    await ensureLoaded();
+    state.lastDracoMessageId = id;
+    await save();
+  }
+
+  async function getLastDracoMessageId() {
+    await ensureLoaded();
+    return state.lastDracoMessageId;
+  }
+
   async function setClaraStatus(status) {
     await ensureLoaded();
     state.claraStatus = status;
@@ -464,6 +476,8 @@ function createJiwen(opts) {
     checkThresholds,
     setLastChatMessageId,
     getLastChatMessageId,
+    setLastDracoMessageId,
+    getLastDracoMessageId,
     setClaraStatus,
     getClaraStatus,
     // 暴露配置快照（只读），方便外部查看
