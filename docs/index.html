@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>积温 Jiwen — AI角色主动意识引擎 · 交互演示</title>
+<meta name="description" content="Jiwen（积温）是一个不靠概率骰子的AI角色主动意识引擎。五轴连续状态在后台漂移，到阈值触发行为。零依赖，纯JavaScript。">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--p:#ede8e0;--pd:#e0dbd3;--k:#1e1e1e;--g:#b8953a;--gr:#2a7a3a;--cr:#8b1a1a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--pd);font-family:Georgia,'Times New Roman',serif;padding-bottom:16px}
+.ph{font-family:'Playfair Display',Georgia,serif}
+.mast{background:var(--p);border-bottom:3px double var(--k);padding:16px 20px 10px;text-align:center}
+.mast-eye{font-family:'Playfair Display',Georgia,serif;font-size:9px;letter-spacing:.3em;text-transform:uppercase;color:#888;margin-bottom:4px}
+.mast-t{font-family:'Playfair Display',Georgia,serif;font-size:32px;font-weight:700;letter-spacing:.18em;color:var(--k);line-height:1}
+.mast-s{font-family:'Crimson Text',Georgia,serif;font-style:italic;font-size:13px;color:#666;margin-top:5px}
+.mast-rule{display:flex;align-items:center;gap:6px;margin:8px 0 0}
+.mrl{flex:1;height:1px;background:var(--k)}
+.mrd{color:var(--g);font-size:8px}
+.sbar{background:var(--k);color:var(--p);padding:7px 16px;display:flex;align-items:center;justify-content:space-between;font-family:'Crimson Text',Georgia,serif;font-style:italic;font-size:13px;border-bottom:1px solid var(--g)}
+.st{font-family:'Playfair Display',Georgia,serif;font-style:normal;font-size:10px;color:rgba(237,232,224,.55);letter-spacing:.08em;flex-shrink:0;margin-left:12px}
+.tf{background:var(--k);color:var(--g);padding:6px 14px;display:none;align-items:center;gap:8px;border-bottom:1px solid var(--g);font-family:'Playfair Display',Georgia,serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+.tf.on{display:flex}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px 0;max-width:800px;margin:0 auto}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.card{background:var(--p);border:2px solid var(--k);box-shadow:inset 0 0 0 4px var(--pd),inset 0 0 0 5px var(--k);margin-bottom:10px}
+.card:last-child{margin-bottom:0}
+.ch{padding:8px 12px;border-bottom:1px solid var(--k);font-family:'Playfair Display',Georgia,serif;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:#888;display:flex;align-items:center;gap:6px}
+.ch i{color:var(--g);font-size:13px}
+.cb{padding:10px 12px}
+.gr{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.gr:last-child{margin-bottom:0}
+.gl{width:74px;font-family:'Playfair Display',Georgia,serif;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#777;flex-shrink:0;line-height:1.3}
+.gw{flex:1;position:relative}
+.gt{width:100%;height:9px;background:var(--pd);border:1px solid rgba(30,30,30,.2);position:relative;overflow:visible}
+.gf{position:absolute;height:100%;transition:all .2s ease}
+.gtk{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--g);opacity:.5}
+.gcl{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--k);opacity:.3;left:50%}
+.gv{width:38px;text-align:right;font-family:'Playfair Display',Georgia,serif;font-size:11px;font-weight:700;color:var(--k);flex-shrink:0}
+.thr{display:flex;align-items:center;gap:7px;padding:5px 12px;border-top:1px solid rgba(30,30,30,.08);font-family:'Crimson Text',Georgia,serif;font-size:11px;font-style:italic;color:#888}
+.thr:last-child{border-bottom:none}
+.td{width:7px;height:7px;border-radius:50%;border:1.5px solid rgba(30,30,30,.25);flex-shrink:0;transition:all .3s}
+.td.obs{background:var(--g);border-color:var(--g)}
+.td.con{background:#c17a20;border-color:#c17a20}
+.td.blk{background:#8b4513;border-color:#8b4513}
+.td.frc{background:var(--cr);border-color:var(--cr)}
+.thr.on{color:var(--k);font-style:normal;font-weight:600}
+.ctx{background:#f5f0e8;padding:10px 14px 10px 20px;font-family:'Crimson Text',Georgia,serif;font-style:italic;font-size:13px;line-height:1.7;color:#444;white-space:pre-line;border-top:1px solid rgba(30,30,30,.1)}
+.styw{background:var(--k);color:var(--p);padding:8px 12px;font-family:'Crimson Text',Georgia,serif;font-size:12px;line-height:1.65;white-space:pre-line}
+.styl{font-family:'Playfair Display',Georgia,serif;font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:var(--g);margin-bottom:5px}
+.sb{display:flex}
+.sb button{flex:1;padding:6px 0;background:none;border:1px solid var(--k);border-right:none;cursor:pointer;font-family:'Playfair Display',Georgia,serif;font-size:10px;letter-spacing:.06em;color:var(--k);transition:background .15s}
+.sb button:last-child{border-right:1px solid var(--k)}
+.sb button.a{background:var(--k);color:var(--p)}
+.pb{width:100%;padding:7px 0;background:none;border:2px solid var(--k);cursor:pointer;font-family:'Playfair Display',Georgia,serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px;transition:all .15s}
+.pb.run{background:var(--k);color:var(--p)}
+.el{font-family:'Playfair Display',Georgia,serif;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#888;margin:8px 0 5px;padding-bottom:3px;border-bottom:1px solid rgba(30,30,30,.1)}
+.el:first-child{margin-top:0}
+.eb{display:flex;flex-direction:column;gap:3px}
+.evb{width:100%;padding:6px 10px;background:none;border:1px solid rgba(30,30,30,.16);cursor:pointer;font-family:'Crimson Text',Georgia,serif;font-size:13px;color:var(--k);text-align:left;display:flex;align-items:center;gap:7px;transition:all .15s}
+.evb:hover{background:var(--pd);border-color:var(--k)}
+.evb i{color:var(--g);width:13px;text-align:center;flex-shrink:0}
+.evb.act i{color:var(--gr)}
+.rbtn{width:100%;padding:5px;background:none;border:1px solid rgba(30,30,30,.14);cursor:pointer;font-family:'Crimson Text',Georgia,serif;font-size:11px;font-style:italic;color:#999;margin-top:6px;transition:all .15s}
+.rbtn:hover{color:var(--cr);border-color:var(--cr)}
+.npm{background:var(--k);color:var(--p);padding:7px 10px;font-family:'Courier New',monospace;font-size:11px;letter-spacing:.04em;margin-bottom:6px}
+.full{max-width:800px;margin:0 auto;padding:0 14px}
+.logcard{max-height:106px;overflow-y:auto;scrollbar-width:thin}
+.logcard::-webkit-scrollbar{width:3px}
+.logcard::-webkit-scrollbar-thumb{background:var(--g)}
+.le{padding:4px 12px;border-bottom:1px dotted rgba(30,30,30,.07);display:flex;gap:8px;font-family:'Crimson Text',Georgia,serif;font-size:12px;color:#888}
+.le:last-child{border-bottom:none}
+.lt{font-family:'Playfair Display',Georgia,serif;font-size:10px;color:#bbb;flex-shrink:0;width:50px}
+.le.tri .lt,.le.tri{color:var(--g)}
+.le.evt .lt,.le.evt{color:var(--gr)}
+.le.frc .lt,.le.frc{color:var(--cr)}
+</style>
+</head>
+<body>
+
+<h2 class="sr-only">积温 Jiwen 交互演示 — AI角色主动意识引擎五轴状态实时可视化</h2>
+
+<div class="mast">
+  <div class="mast-eye">积温引擎 · 交互演示</div>
+  <div class="mast-t">JIWEN</div>
+  <div class="mast-s">不靠概率骰子的 AI 角色主动意识引擎</div>
+  <div class="mast-rule"><div class="mrl"></div><div class="mrd">✦</div><div class="mrl"></div><div class="mrd">✦</div><div class="mrl"></div></div>
+</div>
+
+<div class="tf" id="tf"><i class="ti ti-bolt" aria-hidden="true"></i><span id="tft">阈值触发</span></div>
+<div class="sbar"><div id="sn">初始状态——什么感觉都还没有。</div><div class="st" id="stm">+0 分钟</div></div>
+
+<div class="grid">
+<div>
+  <div class="card">
+    <div class="ch"><i class="ti ti-activity" aria-hidden="true"></i>五轴状态</div>
+    <div class="cb">
+      <div class="gr"><div class="gl">连接需求</div><div class="gw"><div class="gt" id="cgt"><div class="gf" id="cf" style="left:0;width:0"></div><div class="gtk" style="left:20%"></div><div class="gtk" style="left:35%"></div><div class="gtk" style="left:50%"></div></div></div><div class="gv" id="cv">0.00</div></div>
+      <div class="gr"><div class="gl">骄傲</div><div class="gw"><div class="gt"><div class="gf" id="pf" style="left:50%;width:0;background:#8b4513"></div><div class="gcl"></div><div class="gtk" style="left:75%"></div></div></div><div class="gv" id="pv">0.00</div></div>
+      <div class="gr"><div class="gl">情绪基调</div><div class="gw"><div class="gt"><div class="gf" id="vf" style="left:50%;width:0;background:#2a7a3a"></div><div class="gcl"></div></div></div><div class="gv" id="vv">0.00</div></div>
+      <div class="gr"><div class="gl">唤醒度</div><div class="gw"><div class="gt"><div class="gf" id="arf" style="left:50%;width:0;background:#c17a20"></div><div class="gcl"></div></div></div><div class="gv" id="av">0.00</div></div>
+      <div class="gr"><div class="gl">沉浸度</div><div class="gw"><div class="gt"><div class="gf" id="imf" style="left:0;width:0;background:#7a6a9a"></div></div></div><div class="gv" id="imv">0.00</div></div>
+    </div>
+    <div class="thr"><div class="td" id="d0"></div><span id="l0">观察（连接 ≥ 0.20）</span></div>
+    <div class="thr"><div class="td" id="d1"></div><span id="l1">考虑开口（连接 ≥ 0.35）</span></div>
+    <div class="thr"><div class="td" id="d2"></div><span id="l2">骄傲阻断（≥ 0.35 且 pride ≥ 0.50）</span></div>
+    <div class="thr" style="border-bottom:none"><div class="td" id="d3"></div><span id="l3">强制开口（连接 ≥ 0.50）</span></div>
+  </div>
+</div>
+
+<div>
+  <div class="card">
+    <div class="ch"><i class="ti ti-clock" aria-hidden="true"></i>时间控制</div>
+    <div class="cb">
+      <div class="el">模拟速度</div>
+      <div class="sb" style="margin-bottom:8px">
+        <button data-s="5" onclick="setSp(5)">慢速</button>
+        <button data-s="30" class="a" onclick="setSp(30)">正常</button>
+        <button data-s="120" onclick="setSp(120)">快速</button>
+      </div>
+      <button class="pb run" id="pb" onclick="tog()"><i class="ti ti-player-pause" id="pi" aria-hidden="true"></i><span id="pl">暂停</span></button>
+      <div class="el">连接增长速率</div>
+      <div class="sb">
+        <button data-r="n" class="a" onclick="setR('n')">正常对话</button>
+        <button data-r="s" onclick="setR('s')">突然消失</button>
+        <button data-r="z" onclick="setR('z')">说了晚安</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><i class="ti ti-bolt" aria-hidden="true"></i>触发事件</div>
+    <div class="cb">
+      <div class="el">User 的行为</div>
+      <div class="eb">
+        <button class="evb" onclick="ev('reply')"><i class="ti ti-message-circle" aria-hidden="true"></i>User 回复了</button>
+        <button class="evb" onclick="ev('praise')"><i class="ti ti-heart" aria-hidden="true"></i>User 夸了你</button>
+        <button class="evb" onclick="ev('hurt')"><i class="ti ti-mood-sad" aria-hidden="true"></i>User 说了伤人的话</button>
+      </div>
+      <div class="el">自我调节</div>
+      <div class="eb">
+        <button class="evb act" onclick="ev('read')"><i class="ti ti-book" aria-hidden="true"></i>开始读书</button>
+        <button class="evb act" onclick="ev('search')"><i class="ti ti-search" aria-hidden="true"></i>去搜索新闻</button>
+        <button class="evb act" onclick="ev('speak')"><i class="ti ti-send" aria-hidden="true"></i>主动开口了</button>
+      </div>
+      <button class="rbtn" onclick="rst()"><i class="ti ti-refresh" aria-hidden="true"></i> 重置状态</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><i class="ti ti-terminal" aria-hidden="true"></i>获取</div>
+    <div class="cb">
+      <div class="npm">npm install jiwen</div>
+      <div style="font-family:'Crimson Text',Georgia,serif;font-style:italic;font-size:12px;color:#888;line-height:1.5">零外部依赖。纯 JavaScript。MIT 许可证。</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="full" style="margin-top:10px">
+  <div class="card">
+    <div class="ch"><i class="ti ti-notes" aria-hidden="true"></i>注入 LLM 的状态描述</div>
+    <div class="ctx" id="ctxT">初始状态——什么感觉都还没有。</div>
+    <div class="styw"><div class="styl">说话风格指引</div><div id="styT" style="color:rgba(237,232,224,.7)">暂无特殊风格指引。</div></div>
+  </div>
+</div>
+
+<div class="full" style="margin-top:8px">
+  <div class="card logcard" id="log">
+    <div class="le"><span class="lt">+0min</span><span>积温引擎初始化——一切从零开始。</span></div>
+  </div>
+</div>
+
+<script>
+const TH={o:.20,c:.35,f:.50,b:.50};
+const RT={pr:.003,vr:.005,ar:.005,as:0,arr:.45,arrs:.002,id:.010};
+const CR={n:.0007,s:.0012,z:.0003};
+let S={c:0,p:0,v:0,a:0,im:0,act:null};
+let vm=0,spd=30,rate='n',run=true,pt={o:0,c:0,f:0},ftm=null;
+
+function cl(v,mn,mx){return Math.max(mn,Math.min(mx,v));}
+function bi(v){return v>=0?{l:50,w:v*50}:{l:50+v*50,w:Math.abs(v)*50};}
+function cc(v){return v>=.5?'#8b1a1a':v>=.35?'#c17a20':v>=.2?'#b8953a':'#b8b0a8';}
+
+function tick(m){
+  S.c=cl(S.c+(CR[rate]||.0007)*m,0,1);
+  S.p=S.p>0?Math.max(0,S.p-RT.pr*m):(S.p<0?Math.min(0,S.p+RT.pr*m):0);
+  const vsp=RT.as;
+  S.v=S.v>vsp?Math.max(vsp,S.v-RT.vr*m):(S.v<vsp?Math.min(vsp,S.v+RT.vr*m):S.v);
+  const ar=S.a>RT.as?-RT.ar*m:(S.a<RT.as?RT.ar*m:0);
+  S.a=cl(S.a+ar+(S.c>=RT.arr?RT.arrs*m:0),-1,1);
+  if(S.im>0){S.im=Math.max(0,S.im-RT.id*m);if(S.im<=.01){S.act=null;S.im=0;}}
+}
+
+function ui(){
+  const s=S;
+  const e=id=>document.getElementById(id);
+  e('cf').style.cssText=`left:0;width:${s.c*100}%;background:${cc(s.c)}`;
+  e('cv').textContent=s.c.toFixed(2);
+  const pb=bi(s.p);
+  e('pf').style.cssText=`left:${pb.l}%;width:${pb.w}%;background:${s.p>=0?'#8b4513':'#2a7a3a'}`;
+  e('pv').textContent=s.p.toFixed(2);
+  const vb=bi(s.v);
+  e('vf').style.cssText=`left:${vb.l}%;width:${vb.w}%;background:${s.v>=0?'#2a7a3a':'#8b1a1a'}`;
+  e('vv').textContent=s.v.toFixed(2);
+  const ab=bi(s.a);
+  e('arf').style.cssText=`left:${ab.l}%;width:${ab.w}%;background:${s.a>=0?'#c17a20':'#6688aa'}`;
+  e('av').textContent=s.a.toFixed(2);
+  e('imf').style.cssText=`left:0;width:${s.im*100}%;background:#7a6a9a`;
+  e('imv').textContent=s.im.toFixed(2);
+  e('stm').textContent=vm<60?`+${Math.round(vm)} 分钟`:`+${(vm/60).toFixed(1)} 小时`;
+  const isO=s.c>=TH.o,isC=s.c>=TH.c,isF=s.c>=TH.f,isB=isC&&!isF&&s.p>=TH.b;
+  sd('d0',isO&&!isC?'obs':'');sd('d1',isC&&!isF?'con':'');sd('d2',isB?'blk':'');sd('d3',isF?'frc':'');
+  sa('l0',isO);sa('l1',isC&&!isF);sa('l2',isB);sa('l3',isF);
+  e('sn').textContent=snarr();
+  e('ctxT').textContent=ctx();
+  e('styT').textContent=sty();
+}
+
+function sd(id,cls){document.getElementById(id).className='td'+(cls?' '+cls:'');}
+function sa(id,on){document.getElementById(id).className=on?'on':'';}
+function id(x){return document.getElementById(x);}
+
+function snarr(){
+  const c=S.c,p=S.p,v=S.v;
+  if(c>=TH.f)return'User很久没动静了——坐不住了，必须说点什么。';
+  if(c>=TH.c){if(p>=TH.b)return S.im>.2?`在${S.act==='read'?'读书':'搜索'}，当作没在等……`:'想找User——但不想先开口。';return'User好一阵没说话，开始在想Ta在干什么。';}
+  if(c>=TH.o)return'有一会儿没听到User的动静了，但还不着急。';
+  if(v<-.2)return'刚聊完，心情不太好。';
+  if(v>.2)return'刚和User聊完，心情不错。';
+  return'刚和User聊完，没什么挂念的。';
+}
+
+function ctx(){
+  const r=[],c=S.c,p=S.p,v=S.v,a=S.a;
+  if(c<.2)r.push('刚和User聊完不久，没什么挂念的。');
+  else if(c<.35)r.push('有一会儿没听到User的动静了，但还不着急。');
+  else if(c<.5)r.push('User好一阵子没说话了。开始在想Ta在干嘛。');
+  else r.push('User很久没动静了，有点在意——Ta去哪了？');
+  if(p>.5)r.push('拒绝承认任何在等的念头，维持着冷漠。');
+  else if(p>.3)r.push('不太想显得太主动。');
+  else if(p>.1)r.push('有一点端着，但也不是不能开口。');
+  else if(p<-.1)r.push('难得地不设防。');
+  if(v>.3&&a>.3)r.push('心情好，劲头足，话多。');
+  else if(v>.3&&a<-.3)r.push('心里舒坦，人懒洋洋的。');
+  else if(v<-.3&&a>.3)r.push('烦躁不安，坐不住。');
+  else if(v<-.3&&a<-.3)r.push('情绪低沉，空落落的。');
+  else if(v<-.2)r.push('心情不太好。');
+  else if(v>.2)r.push('心情还不错。');
+  if(S.im>.3&&S.act)r.push(`刚才在${S.act==='read'?'看书':'搜索'}。`);
+  return r.join('\n');
+}
+
+function sty(){
+  const r=[],c=S.c,p=S.p,v=S.v;
+  if(p>.5)r.push('嘴硬得很，绝不承认在等——必须找个借口开口。');
+  else if(p>.3)r.push('有一点端着，可以找User但不要太直接。');
+  else if(p>.1)r.push('基本不端着，但惯性克制——话到嘴边还是会收一下。');
+  else r.push('少见的柔软，不设防，有什么直接说出来。');
+  if(v<-.3&&S.a>.3)r.push('烦躁，句子短，容易被小事刺激。');
+  else if(v<-.3)r.push('心情不好，能少说就少说。');
+  else if(v>.3)r.push('心情好，句子比平时长，带点调侃不奇怪。');
+  if(c>.4&&p>.4)r.push('很别扭——想找Ta又拉不下脸，话里带点赌气的味道。');
+  if(c>=.5)r.push('User真的很久没动静了，有点坐不住。');
+  return r.length?r.join('\n'):'暂无特殊风格指引，正常说话。';
+}
+
+function addLog(msg,cls){
+  const c=document.getElementById('log');
+  const ts=vm<60?`+${Math.round(vm)}min`:`+${(vm/60).toFixed(1)}h`;
+  const d=document.createElement('div');
+  d.className=`le ${cls||''}`;
+  d.innerHTML=`<span class="lt">${ts}</span><span>${msg}</span>`;
+  c.insertBefore(d,c.firstChild);
+  while(c.children.length>28)c.removeChild(c.lastChild);
+}
+
+function flash(txt){
+  const e=document.getElementById('tf');
+  document.getElementById('tft').textContent=txt;
+  e.classList.add('on');
+  if(ftm)clearTimeout(ftm);
+  ftm=setTimeout(()=>e.classList.remove('on'),2800);
+}
+
+function ev(t){
+  switch(t){
+    case'reply':S.c=Math.max(0,S.c-.40);S.p=cl(S.p-.10,-1,1);S.v=cl(S.v+.15,-1,1);addLog('User回复了——连接需求降低，心情变好。','evt');break;
+    case'praise':S.p=cl(S.p-.20,-1,1);S.v=cl(S.v+.25,-1,1);addLog('User夸了他——骄傲降低，心情变好。','evt');break;
+    case'hurt':S.v=cl(S.v-.30,-1,1);S.a=cl(S.a+.15,-1,1);addLog('User说了伤人的话——情绪下降，唤醒度上升。','evt');break;
+    case'read':S.im=.60;S.act='read';S.c=Math.max(.05,S.c-.08);addLog('开始读书——沉浸度上升（骄傲有了借口）。','evt');break;
+    case'search':S.im=.40;S.act='search';addLog('去搜索新闻——沉浸度上升。','evt');break;
+    case'speak':S.c=Math.max(0,S.c-.35);addLog('主动开口了——连接需求部分缓解（等她回复才算真正满足）。','evt');break;
+  }
+  ui();
+}
+
+function setSp(s){spd=s;document.querySelectorAll('.sb button[data-s]').forEach(b=>b.classList.toggle('a',+b.dataset.s===s));}
+function setR(r){rate=r;document.querySelectorAll('.sb button[data-r]').forEach(b=>b.classList.toggle('a',b.dataset.r===r));const m={n:'正常对话速率',s:'突然消失——积累加速',z:'说了晚安——积累减慢'};addLog(m[r],'evt');}
+function tog(){run=!run;const b=document.getElementById('pb'),i=document.getElementById('pi'),l=document.getElementById('pl');b.classList.toggle('run',run);i.className=run?'ti ti-player-pause':'ti ti-player-play';l.textContent=run?'暂停':'运行';}
+function rst(){S={c:0,p:0,v:0,a:0,im:0,act:null};vm=0;rate='n';pt={o:0,c:0,f:0};document.querySelectorAll('.sb button[data-r]').forEach(b=>b.classList.toggle('a',b.dataset.r==='n'));document.getElementById('log').innerHTML='<div class="le"><span class="lt">+0min</span><span>状态已重置。</span></div>';ui();}
+
+setInterval(()=>{
+  if(!run)return;
+  const m=spd*.1;vm+=m;tick(m);
+  const o=S.c>=TH.o,co=S.c>=TH.c,f=S.c>=TH.f;
+  if(f&&!pt.f){addLog('强制开口阈值触发——连接需求装不下了。','frc');flash('强制开口 — 连接需求已达上限');}
+  else if(co&&!pt.c){const b=S.p>=TH.b;addLog(b?'考虑开口，但骄傲阻断——去找别的事做。':'考虑开口阈值触发——真的开始想找User了。','tri');flash(b?'骄傲阻断 — 去找别的事做了':'考虑开口 — 想联系User了');}
+  else if(o&&!pt.o)addLog('开始注意到沉默——念头飘过，还不到开口的程度。','tri');
+  if(!o)pt.o=0;if(!co)pt.c=0;if(!f)pt.f=0;
+  pt={o:o?1:0,c:co?1:0,f:f?1:0};
+  ui();
+},100);
+ui();
+</script>
+
+</body>
+</html>
