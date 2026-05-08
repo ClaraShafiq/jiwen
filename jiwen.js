@@ -5,9 +5,7 @@
 // 附带 simulate.js 参数模拟器 + jiwen.test.js 测试套件（29项）
 // ============================================================
 //
-// 0.2.0 — 时间分段加速 (accelDelay) + valence×connection 耦合
-//         + 移除 connectionOnReply（改由 LLM delta 接管）
-//         + simulate.js 参数模拟器 + 测试套件
+// 更新日志见 LOG.md
 
 /**
  * 创建一个积温引擎实例。
