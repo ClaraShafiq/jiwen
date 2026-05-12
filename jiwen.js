@@ -81,6 +81,21 @@ function createJiwen(opts) {
 
     // 活动缓解：做事情能部分缓解连接需求
     activityConnectionRelief: 0,   // setActivity 时 connection 降幅
+
+    // ── Valence delta 状态相关缩放（改1）──
+    // 已在高位时正向 delta 减弱、已在低位时负向 delta 减弱
+    // 防止情绪在极端位无限累积
+    valenceDeltaScaling: false,   // 默认关闭，向后兼容
+
+    // ── connection 驱动的 valence 漂移（改2）──
+    // connection 高时（想她但无回应），心情自然下沉
+    valenceConnectionDriftThreshold: 0.0, // connection 超过此才启动（0=永不）
+    valenceConnectionDriftRate: 0,        // 漂移速率（如 0.003）
+
+    // ── Valence 边际递减（改3）──
+    // 短时间内同方向 delta 累积 → 后续同方向 delta 效果打折
+    valenceDiminishWindow: 0,   // 统计窗口（分钟），0=不启用
+    valenceDiminishFactor: 0,   // 递减强度（如 2.0 表示累积 0.5 时 scale=0.5）
   }, opts.rates);
 
   // ── 阈值 ────────────────────────
@@ -124,6 +139,10 @@ function createJiwen(opts) {
 
   let state = { ...DEFAULT_STATE };
   let _loaded = false;
+
+  // ── 边际递减追踪（改3）──
+  // 闭包内，不持久化。记录最近 N 分钟内的 valence delta
+  const _valenceDeltaLog = []; // [{ time: ms, value: number }]
 
   // ── 加载 ────────────────────────
   async function load() {
@@ -247,6 +266,14 @@ function createJiwen(opts) {
       state.valence = Math.max(rates.valenceSetpoint, state.valence - valenceRegressRate * mins);
     } else if (state.valence < rates.valenceSetpoint) {
       state.valence = Math.min(rates.valenceSetpoint, state.valence + valenceRegressRate * mins);
+    }
+
+    // ── 改2: connection 驱动的 valence 漂移 ──
+    // connection 高（想她但无回应）→ 心情自然下沉
+    if (rates.valenceConnectionDriftRate > 0 &&
+        state.connection >= rates.valenceConnectionDriftThreshold) {
+      const drift = rates.valenceConnectionDriftRate * mins * state.connection;
+      state.valence = clamp(state.valence - drift, axes.valence[0], axes.valence[1]);
     }
 
     // ── Arousal（唤醒度）：向设定点漂移 + 等待焦躁（两力竞争）──
@@ -384,17 +411,52 @@ function createJiwen(opts) {
   // ── 应用外部 delta ──────────────
   async function applyDelta(delta) {
     await ensureLoaded();
-    if (delta.pride !== undefined)
-      state.pride = clamp(state.pride + delta.pride, axes.pride[0], axes.pride[1]);
-    if (delta.valence !== undefined)
-      state.valence = clamp(state.valence + delta.valence, axes.valence[0], axes.valence[1]);
-    if (delta.arousal !== undefined)
-      state.arousal = clamp(state.arousal + delta.arousal, axes.arousal[0], axes.arousal[1]);
-    if (delta.connection !== undefined)
-      state.connection = clamp(state.connection + delta.connection, axes.connection[0], axes.connection[1]);
-    // 向后兼容：仍接受 mood，映射到 valence
-    if (delta.mood !== undefined) {
-      state.valence = clamp(state.valence + delta.mood, axes.valence[0], axes.valence[1]);
+    // 深拷贝一份做缩放，不修改调用方的对象
+    const scaled = { ...delta };
+
+    // ── 改3: 边际递减 — 同方向 delta 在窗口内累积 → 效果打折 ──
+    if (scaled.valence !== undefined &&
+        rates.valenceDiminishWindow > 0 && rates.valenceDiminishFactor > 0) {
+      const now = Date.now();
+      const windowMs = rates.valenceDiminishWindow * 60 * 1000;
+      // 清理过期记录
+      for (let i = _valenceDeltaLog.length - 1; i >= 0; i--) {
+        if (now - _valenceDeltaLog[i].time > windowMs) _valenceDeltaLog.splice(i, 1);
+      }
+      // 统计同方向累积量
+      const sameSign = _valenceDeltaLog.filter(
+        d => (scaled.valence > 0 && d.value > 0) || (scaled.valence < 0 && d.value < 0)
+      );
+      const cumSum = sameSign.reduce((s, d) => s + Math.abs(d.value), 0);
+      if (cumSum > 0) {
+        const scale = 1 / (1 + cumSum * rates.valenceDiminishFactor);
+        scaled.valence *= scale;
+      }
+      _valenceDeltaLog.push({ time: now, value: delta.valence }); // 记原始值
+    }
+
+    // ── 改1: 状态相关缩放 — 高位正向减弱，低位负向减弱 ──
+    if (scaled.valence !== undefined && rates.valenceDeltaScaling) {
+      if (scaled.valence > 0 && state.valence > 0.3) {
+        const dampen = (state.valence - 0.3) / 0.7 * 0.5; // 0.3→0%, 1.0→50%
+        scaled.valence *= (1 - dampen);
+      } else if (scaled.valence < 0 && state.valence < -0.3) {
+        const dampen = (-state.valence - 0.3) / 0.7 * 0.5;
+        scaled.valence *= (1 - dampen);
+      }
+    }
+
+    if (scaled.pride !== undefined)
+      state.pride = clamp(state.pride + scaled.pride, axes.pride[0], axes.pride[1]);
+    if (scaled.valence !== undefined)
+      state.valence = clamp(state.valence + scaled.valence, axes.valence[0], axes.valence[1]);
+    if (scaled.arousal !== undefined)
+      state.arousal = clamp(state.arousal + scaled.arousal, axes.arousal[0], axes.arousal[1]);
+    if (scaled.connection !== undefined)
+      state.connection = clamp(state.connection + scaled.connection, axes.connection[0], axes.connection[1]);
+    // 向后兼容：仍接受 mood，映射到 valence（也走缩放）
+    if (scaled.mood !== undefined) {
+      state.valence = clamp(state.valence + scaled.mood, axes.valence[0], axes.valence[1]);
     }
     await save();
   }
