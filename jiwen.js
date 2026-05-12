@@ -82,6 +82,9 @@ function createJiwen(opts) {
     // 活动缓解：做事情能部分缓解连接需求
     activityConnectionRelief: 0,   // setActivity 时 connection 降幅
 
+    // 沉浸阻尼：沉浸度高时连接需求涨得慢
+    immersionDampenConnection: 1.0, // 0=关闭，1=线性阻尼 (1-immersion)
+
     // ── Valence delta 状态相关缩放（改1）──
     // 已在高位时正向 delta 减弱、已在低位时负向 delta 减弱
     // 防止情绪在极端位无限累积
@@ -209,7 +212,12 @@ function createJiwen(opts) {
       valenceMultiplier = rates.valenceConnectBoost;
     }
 
-    const effectiveRate = baseRate * accelFactor * valenceMultiplier;
+    // 沉浸阻尼：沉浸度高 → 连接需求涨得慢
+    const immersionFactor = rates.immersionDampenConnection > 0
+      ? 1 - state.immersion * rates.immersionDampenConnection
+      : 1;
+
+    const effectiveRate = baseRate * accelFactor * valenceMultiplier * Math.max(0, immersionFactor);
 
     state.connection = clamp(
       state.connection + effectiveRate * mins,
