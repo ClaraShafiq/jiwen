@@ -402,11 +402,16 @@ function createJiwen(opts) {
   // ── 外部行为更新沉浸度（同时部分缓解连接需求） ──
   async function setActivity(type, label) {
     await ensureLoaded();
+
+    // 同类型活动不重复计算连接缓解
+    // 防止 Agent Loop 中连续选择同一活动时反复扣减 connection
+    const sameType = state.lastActivity && state.lastActivity.type === type;
+
     state.lastActivity = { type, label, at: new Date().toISOString() };
     state.immersion = immersionMap[type] || 0.2;
 
     // 做事情能缓解一点连接需求，但不能替代对方回复
-    if (rates.activityConnectionRelief > 0) {
+    if (rates.activityConnectionRelief > 0 && !sameType) {
       state.connection = Math.max(
         0.01,  // 防止清零导致死循环（connection 永远到不了阈值）
         state.connection - rates.activityConnectionRelief
