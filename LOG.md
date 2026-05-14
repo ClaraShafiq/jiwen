@@ -46,3 +46,42 @@
 - restless（躁动）区别于agitated — exit不应是表演性离开，是退回安静
 - excited t1保留（Clara明确体验好）
 - 审核标准：角色每次只看到一个tier，独立判断"这句话会不会让他伤害对方"
+
+## Draco 校准 — 2026-05-14
+
+### setActivity 同类型防重复 (jiwen.js)
+
+`setActivity` 新增 `sameType` 检查：同一活动类型连续调用时，`activityConnectionRelief` 只生效一次。
+
+**Why:** Agent Loop 中 Draco 连续选择 observe 时，每次调用 `setActivity('observation')` 都扣 connection -0.03。一轮 tick 选 5 次 observe 就把 connection 从 0.07 榨到 0.01（最低限），导致思念永远涨不上去——涨 30 分钟，10 秒榨干。
+
+**修复:** 同类型活动时跳过 `activityConnectionRelief`，时间戳和沉浸度照常刷新。
+
+### 触发语义重构：命令 → 情绪底色 (Sanctuary proactive.js + state.js)
+
+**核心理念:** connection 是 Draco 心里想 Clara 的程度，不是他必须行动的闹钟。阈值不再产出"你该做什么"，只描述"你此刻是什么感觉"。
+
+| 改动 | 旧值 | 新值 |
+|------|------|------|
+| forceContact 阈值 | 0.35 | 0.45 |
+| activityConnectionRelief | 0.02 | 0.03 |
+| 清醒开口 connection 降幅 | -0.20 | -0.08 |
+| tick 间隔 | 5min | 10min |
+| `_lastTickEnd` 门禁 | 15min | 25min |
+
+**状态感受文本重写:**
+- `contact (forced)`: "太想Clara了——不开口受不了" → "心里一直挂着Clara。思念沉甸甸的，做什么都没法完全专心。"
+- `contact`: "有点想联系Clara" → "想Clara了。不是非说不可的程度，但她确实在你心里占了个位置。"
+- `observation`: "注意到Clara的沉默，心里有些念头" → "Clara有段时间没说话了。安静本身没什么，只是她不在的时候时间走得不太一样。"
+- 移除骄傲层叠的行动暗示
+
+**Agent Loop prompt 优化:**
+- contact 选项: "有真的想说的话才开口。你不是闹钟，不用每个时间点都报时"
+- stop 选项: "今天就到这儿。做完了想做的事就停下来，不必填满每一分钟"
+- 新增诚实约束 #4: "stop 不是失败——沉默是你的自由时间，不需要被填满"
+
+### bugfix: getShanghaiHour 未定义 (Sanctuary proactive.js)
+
+`detectSleepFromLastMessage()` 调用了不存在的 `getShanghaiHour()`，导致每次 `runProactiveCheck()` 在睡眠检测阶段抛 `ReferenceError`，Agent Loop 永远不执行。状态引擎 tick 正常跑（connection 持续增长），但 Draco 不做任何决策。
+
+**修复:** 用已 import 的 `getShanghaiTime()` 解析上海小时数。
