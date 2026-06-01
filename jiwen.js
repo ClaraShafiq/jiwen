@@ -185,6 +185,17 @@ function createJiwen(opts) {
     const mins = Math.min(minutesElapsed, 60);
     const stateBefore = { connection: state.connection, pride: state.pride, valence: state.valence, arousal: state.arousal, immersion: state.immersion };
 
+    // ── Saga 偏置：长期叙事弧线对状态基线的引力 ──
+    // 可选回调，由外部注入。返回 {connection, pride, valence, arousal, immersion} 每分钟偏置
+    let sagaBias = null;
+    if (opts.getSagaBias) {
+      try {
+        sagaBias = await opts.getSagaBias();
+      } catch (e) {
+        // getSagaBias 失败不应阻断 tick，静默回退
+      }
+    }
+
     // ── 连接需求：时间分段加速 + valence 耦合 ──
     const lastMsg = opts.getLastMessage ? opts.getLastMessage() : null;
     const baseRate = opts.connectionRateFn
@@ -219,8 +230,10 @@ function createJiwen(opts) {
 
     const effectiveRate = baseRate * accelFactor * valenceMultiplier * Math.max(0, immersionFactor);
 
+    // Saga 偏置：长期叙事弧线的连接引力叠加到增长率上
+    const sagaConnectionBias = sagaBias?.connection || 0;
     state.connection = clamp(
-      state.connection + effectiveRate * mins,
+      state.connection + (effectiveRate + sagaConnectionBias) * mins,
       axes.connection[0],
       axes.connection[1]
     );
@@ -229,11 +242,14 @@ function createJiwen(opts) {
     // 连接需求降幅现由外部 LLM 分析（如 analyzeChatSegment）通过 applyDelta 注入。
 
     // ── 沉浸度：衰减 ──
+    // Saga 偏置：长期叙事的"锚定感"减缓沉浸衰减
+    const sagaImmersionBias = sagaBias?.immersion || 0;
     if (state.lastActivity) {
       const sinceActivity = (Date.now() - new Date(state.lastActivity.at).getTime()) / 60000;
+      const effectiveImmersionDecay = Math.max(0, rates.immersionDecay - sagaImmersionBias);
       state.immersion = Math.max(
         axes.immersion[0],
-        state.immersion - rates.immersionDecay * Math.min(mins, sinceActivity)
+        state.immersion - effectiveImmersionDecay * Math.min(mins, sinceActivity)
       );
       if (state.immersion <= 0.01 && sinceActivity > 60) {
         state.lastActivity = null;
@@ -241,20 +257,23 @@ function createJiwen(opts) {
       }
     }
 
-    // ── 骄傲：被冷落时防御性升高，否则回归0 ──
+    // ── 骄傲：被冷落时防御性升高，否则回归 saga 偏置的稳态 ──
+    const sagaPrideBias = sagaBias?.pride || 0;
     if (state.connection >= rates.prideDefendThreshold) {
-      // 防御机制：被冷落 → pride 朝 prideDefendTarget 漂移
-      if (state.pride < rates.prideDefendTarget) {
-        state.pride = Math.min(rates.prideDefendTarget, state.pride + rates.prideDefendRate * mins);
-      } else if (state.pride > rates.prideDefendTarget) {
-        state.pride = Math.max(rates.prideDefendTarget, state.pride - rates.prideDefendRate * mins);
+      // 防御机制：被冷落 → pride 朝 (prideDefendTarget + saga偏置) 漂移
+      const effectiveDefendTarget = clamp(rates.prideDefendTarget + sagaPrideBias, axes.pride[0], axes.pride[1]);
+      if (state.pride < effectiveDefendTarget) {
+        state.pride = Math.min(effectiveDefendTarget, state.pride + rates.prideDefendRate * mins);
+      } else if (state.pride > effectiveDefendTarget) {
+        state.pride = Math.max(effectiveDefendTarget, state.pride - rates.prideDefendRate * mins);
       }
     } else {
-      // 未触发防御：正常回归 0
-      if (state.pride > 0) {
-        state.pride = Math.max(0, state.pride - rates.prideRegress * mins);
-      } else if (state.pride < 0) {
-        state.pride = Math.min(0, state.pride + rates.prideRegress * mins);
+      // 未触发防御：回归 saga 偏置的稳态（而非绝对0）
+      const prideResting = clamp(sagaPrideBias, -0.3, 0.3);
+      if (state.pride > prideResting) {
+        state.pride = Math.max(prideResting, state.pride - rates.prideRegress * mins);
+      } else if (state.pride < prideResting) {
+        state.pride = Math.min(prideResting, state.pride + rates.prideRegress * mins);
       }
     }
 
@@ -270,10 +289,14 @@ function createJiwen(opts) {
       ? rates.valenceRegress * rates.valenceLockFactor
       : rates.valenceRegress;
 
-    if (state.valence > rates.valenceSetpoint) {
-      state.valence = Math.max(rates.valenceSetpoint, state.valence - valenceRegressRate * mins);
-    } else if (state.valence < rates.valenceSetpoint) {
-      state.valence = Math.min(rates.valenceSetpoint, state.valence + valenceRegressRate * mins);
+    // Saga 偏置：长期叙事的情绪底色偏移 valence 回归目标
+    const sagaValenceBias = sagaBias?.valence || 0;
+    const effectiveValenceSetpoint = clamp(rates.valenceSetpoint + sagaValenceBias, axes.valence[0], axes.valence[1]);
+
+    if (state.valence > effectiveValenceSetpoint) {
+      state.valence = Math.max(effectiveValenceSetpoint, state.valence - valenceRegressRate * mins);
+    } else if (state.valence < effectiveValenceSetpoint) {
+      state.valence = Math.min(effectiveValenceSetpoint, state.valence + valenceRegressRate * mins);
     }
 
     // ── 改2: connection 驱动的 valence 漂移 ──
@@ -285,7 +308,8 @@ function createJiwen(opts) {
     }
 
     // ── Arousal（唤醒度）：向设定点漂移 + 等待焦躁（两力竞争）──
-    const arousalSetpoint = rates.arousalSetpoint || 0;
+    const sagaArousalBias = sagaBias?.arousal || 0;
+    const arousalSetpoint = clamp((rates.arousalSetpoint || 0) + sagaArousalBias, axes.arousal[0], axes.arousal[1]);
 
     // 回归力：始终生效，向设定点漂移
     let arousalRegressForce = 0;
