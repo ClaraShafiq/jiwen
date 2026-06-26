@@ -360,8 +360,8 @@ describe('诊断列 Diagnostics', () => {
     assert(d4.effective_pride === false);
   });
 
-  it('effective_pride 在新 Draco 参数下存在有效拦截窗口', async () => {
-    // 用新 Draco 实际参数（accelDelay=30, accel=1.5, prideBlock=0.25）
+  it('effective_pride 在新参数下存在有效拦截窗口', async () => {
+    // 使用实际参数（accelDelay=30, accel=1.5, prideBlock=0.25）
     const { instance } = makeTestJiwen({
       rates: {
         connectionAccel: 1.5,
@@ -400,7 +400,7 @@ describe('诊断列 Diagnostics', () => {
     const finalConn = trajectory[trajectory.length - 1].connection;
     const finalPride = trajectory[trajectory.length - 1].pride;
 
-    console.log(`\n     [新Draco参数 50min] c:0→${finalConn.toFixed(3)} p:0→${finalPride.toFixed(3)} | effective_pride:${effCount}次 force:${forceCount}次`);
+    console.log(`\n     [新参数 50min] c:0→${finalConn.toFixed(3)} p:0→${finalPride.toFixed(3)} | effective_pride:${effCount}次 force:${forceCount}次`);
 
     // 新参数下 pride 应在 considerContact→forceContact 间形成有效拦截窗口
     assert(effCount > 0, '新参数下 effective_pride 应 > 0（pride 能在 considerContact 窗口内拦截）');
@@ -506,7 +506,7 @@ describe('Connection 重设计 ConnectionRedesign', () => {
     });
     await instance.load();
 
-    // 模拟 Clara 31 分钟前发了最后一条消息 → 已过 accelDelay，加速生效
+    // 模拟用户31 分钟前发了最后一条消息 → 已过 accelDelay，加速生效
     lastMsg = { id: 1, content: '测试', timestamp: new Date(Date.now() - 31 * 60000).toISOString() };
 
     // 逐分钟 tick，让 accel 因子正确累积（离散近似连续积分）

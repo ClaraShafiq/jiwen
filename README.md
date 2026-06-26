@@ -227,7 +227,7 @@ const state = await jiwen.getState();
 | `setLastChatMessageId(id)` | 标记已分析到的消息 ID |
 | `getLastChatMessageId()` | 获取上次分析到的消息 ID |
 | `setUserStatus(status)` | 设置对方状态（active / busy / away / sleeping） |
-| `getUerStatus()` | 获取对方当前状态 |
+| `getUserStatus()` | 获取对方当前状态 |
 | `getStateSummary()` | 返回当前状态的可读摘要（一行字符串，调试用） |
 
 ### 调试日志
@@ -259,7 +259,7 @@ const jiwen = createJiwen({
 
 ```js
 console.log(jiwen.getStateSummary());
-// [积温] c:0.15(悠闲) p:0.40(端着) v:0.20(中性) a:-0.10(平静) i:0.50(沉浸于reading) | claraStatus: active
+// [积温] c:0.15(悠闲) p:0.40(端着) v:0.20(中性) a:-0.10(平静) i:0.50(沉浸于reading) | userStatus: active
 ```
 
 ### 语调网格（推荐）

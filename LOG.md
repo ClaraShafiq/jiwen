@@ -6,7 +6,7 @@
 - 移除 connectionOnReply（改由 LLM delta 接管）
 - simulate.js 参数模拟器 + 测试套件
 
-## Draco 实装校准 — 2026-05-08
+## 引擎实装校准 — 2026-05-08
 
 ### 参数校准 (Sanctuary services/state.js)
 
@@ -44,22 +44,22 @@
 - agitated（烦躁）不应是攻击授权 — 高arousal+低valence是痛苦状态，不是license to be cruel
 - sullen（阴郁）需要出口 — 单向求哄会导致loop，每条描述应隐含"她回应后你怎么变化"
 - restless（躁动）区别于agitated — exit不应是表演性离开，是退回安静
-- excited t1保留（Clara明确体验好）
+- excited t1保留（使用者反馈明确体验好）
 - 审核标准：角色每次只看到一个tier，独立判断"这句话会不会让他伤害对方"
 
-## Draco 校准 — 2026-05-14
+## 引擎校准 — 2026-05-14
 
 ### setActivity 同类型防重复 (jiwen.js)
 
 `setActivity` 新增 `sameType` 检查：同一活动类型连续调用时，`activityConnectionRelief` 只生效一次。
 
-**Why:** Agent Loop 中 Draco 连续选择 observe 时，每次调用 `setActivity('observation')` 都扣 connection -0.03。一轮 tick 选 5 次 observe 就把 connection 从 0.07 榨到 0.01（最低限），导致思念永远涨不上去——涨 30 分钟，10 秒榨干。
+**Why:** Agent Loop 中 引擎实例 连续选择 observe 时，每次调用 `setActivity('observation')` 都扣 connection -0.03。一轮 tick 选 5 次 observe 就把 connection 从 0.07 榨到 0.01（最低限），导致思念永远涨不上去——涨 30 分钟，10 秒榨干。
 
 **修复:** 同类型活动时跳过 `activityConnectionRelief`，时间戳和沉浸度照常刷新。
 
 ### 触发语义重构：命令 → 情绪底色 (Sanctuary proactive.js + state.js)
 
-**核心理念:** connection 是 Draco 心里想 Clara 的程度，不是他必须行动的闹钟。阈值不再产出"你该做什么"，只描述"你此刻是什么感觉"。
+**核心理念:** connection 是 引擎实例 心里想对方的程度，不是他必须行动的闹钟。阈值不再产出"你该做什么"，只描述"你此刻是什么感觉"。
 
 | 改动 | 旧值 | 新值 |
 |------|------|------|
@@ -70,9 +70,9 @@
 | `_lastTickEnd` 门禁 | 15min | 25min |
 
 **状态感受文本重写:**
-- `contact (forced)`: "太想Clara了——不开口受不了" → "心里一直挂着Clara。思念沉甸甸的，做什么都没法完全专心。"
-- `contact`: "有点想联系Clara" → "想Clara了。不是非说不可的程度，但她确实在你心里占了个位置。"
-- `observation`: "注意到Clara的沉默，心里有些念头" → "Clara有段时间没说话了。安静本身没什么，只是她不在的时候时间走得不太一样。"
+- `contact (forced)`: "太想对方了——不开口受不了" → "心里一直挂着对方。思念沉甸甸的，做什么都没法完全专心。"
+- `contact`: "有点想联系对方" → "想对方了。不是非说不可的程度，但她确实在你心里占了个位置。"
+- `observation`: "注意到对方的沉默，心里有些念头" → "对方有段时间没说话了。安静本身没什么，只是她不在的时候时间走得不太一样。"
 - 移除骄傲层叠的行动暗示
 
 **Agent Loop prompt 优化:**
@@ -82,6 +82,6 @@
 
 ### bugfix: getShanghaiHour 未定义 (Sanctuary proactive.js)
 
-`detectSleepFromLastMessage()` 调用了不存在的 `getShanghaiHour()`，导致每次 `runProactiveCheck()` 在睡眠检测阶段抛 `ReferenceError`，Agent Loop 永远不执行。状态引擎 tick 正常跑（connection 持续增长），但 Draco 不做任何决策。
+`detectSleepFromLastMessage()` 调用了不存在的 `getShanghaiHour()`，导致每次 `runProactiveCheck()` 在睡眠检测阶段抛 `ReferenceError`，Agent Loop 永远不执行。状态引擎 tick 正常跑（connection 持续增长），但 引擎实例 不做任何决策。
 
 **修复:** 用已 import 的 `getShanghaiTime()` 解析上海小时数。

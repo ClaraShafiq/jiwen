@@ -149,8 +149,8 @@ function createJiwen(opts) {
     lastTick: null,           // ISO
     lastChatAnalysis: null,   // ISO
     lastChatMessageId: null,
-    lastDracoMessageId: null,  // 上次Draco回复的消息ID，用于将同批次Clara消息归组
-    claraStatus: 'active',     // 'active' | 'busy' | 'away' | 'sleeping' — 由 analyzeChatSegment LLM 分析
+    lastBotMessageId: null,   // 上次Bot回复的消息ID，用于将同批次用户消息归组
+    userStatus: 'active',     // 'active' | 'busy' | 'away' | 'sleeping' — 由外部 LLM 分析
   };
 
   let state = { ...DEFAULT_STATE };
@@ -564,25 +564,25 @@ function createJiwen(opts) {
     return state.lastChatMessageId;
   }
 
-  async function setLastDracoMessageId(id) {
+  async function setLastBotMessageId(id) {
     await ensureLoaded();
-    state.lastDracoMessageId = id;
+    state.lastBotMessageId = id;
     await save();
   }
 
-  async function getLastDracoMessageId() {
+  async function getLastBotMessageId() {
     await ensureLoaded();
-    return state.lastDracoMessageId;
+    return state.lastBotMessageId;
   }
 
-  async function setClaraStatus(status) {
+  async function setUserStatus(status) {
     await ensureLoaded();
-    state.claraStatus = status;
+    state.userStatus = status;
     await save();
   }
 
-  function getClaraStatus() {
-    return state.claraStatus || 'active';
+  function getUserStatus() {
+    return state.userStatus || 'active';
   }
 
   // ── 可读状态摘要（调试用）──
@@ -602,7 +602,7 @@ function createJiwen(opts) {
 
     return [
       `[积温] c:${c.toFixed(2)}(${cLabel}) p:${p.toFixed(2)}(${pLabel}) v:${v.toFixed(2)}(${vLabel}) a:${a.toFixed(2)}(${aLabel}) i:${i.toFixed(2)}(${iLabel})`,
-      `claraStatus: ${state.claraStatus || 'active'}`,
+      `userStatus: ${state.userStatus || 'active'}`,
       state.lastActivity ? `lastActivity: ${state.lastActivity.type} @ ${state.lastActivity.at}` : null,
     ].filter(Boolean).join(' | ');
   }
@@ -621,10 +621,10 @@ function createJiwen(opts) {
     checkThresholds,
     setLastChatMessageId,
     getLastChatMessageId,
-    setLastDracoMessageId,
-    getLastDracoMessageId,
-    setClaraStatus,
-    getClaraStatus,
+    setLastBotMessageId,
+    getLastBotMessageId,
+    setUserStatus,
+    getUserStatus,
     getStateSummary,
     // 暴露配置快照（只读），方便外部查看
     config: {

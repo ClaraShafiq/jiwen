@@ -6,17 +6,17 @@
 
 开源在 `github.com/ClaraShafiq/jiwen`。零依赖，纯 JS。任何人可以拿去给自己的 AI 角色用。
 
-## 和 Sanctuary 的关系
+## 和私用实例的关系
 
 ```
 jiwen/jiwen.js          ← 通用引擎（开源）
-Sanctuary/services/state.js  ← Draco 适配层（私密）
+private/services/state.js  ← 特定角色的适配层（私密）
 ```
 
 - jiwen 是干净的框架——数学漂移、阈值判断、可注入接口
-- Sanctuary 的 `state.js` 是 Draco 的实例化——注入中文文案、DB 查询、个性参数
-- **修改核心数学逻辑时，两个 repo 都要更新**
-- **修改 Draco 的文案/参数时，只改 Sanctuary**
+- 私用 `state.js` 是特定角色的实例化——注入中文文案、DB 查询、个性参数
+- **修改核心数学逻辑时，两边都要更新**
+- **修改角色的文案/参数时，只改私用仓库**
 
 ## 什么需要同步到 jiwen
 
@@ -28,8 +28,8 @@ Sanctuary/services/state.js  ← Draco 适配层（私密）
 | 新增可配置项 | 是 |
 | 默认参数值 | 视情况 |
 | README 示例/文档 | 是 |
-| Draco 的 prompt 文案 | 否 |
-| Draco 的个性参数（速率/阈值） | 否 |
+| 特定角色的 prompt 文案 | 否 |
+| 特定角色的个性参数（速率/阈值） | 否 |
 
 ## 文件结构
 
