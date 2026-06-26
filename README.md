@@ -144,7 +144,7 @@ User 好一阵子没说话了。开始在想 User 在干嘛。
 ## 安装
 
 ```bash
-npm install jiwen
+npm install @clarashafiq/jiwen
 ```
 
 零外部依赖。纯 JavaScript。
@@ -152,7 +152,7 @@ npm install jiwen
 ## 快速开始
 
 ```js
-const { createJiwen } = require('jiwen');
+const { createJiwen } = require('@clarashafiq/jiwen');
 
 const jiwen = createJiwen({
   // ── 消息源（必填）──
@@ -234,8 +234,8 @@ const state = await jiwen.getState();
 手动写 `getPromptContext` / `getStyleGuidance` 查表函数比较繁琐。jiwen 提供了 `tone-grid` 模块——一个预置的 **9 情绪簇 × 5 档 pride** 语调网格，你只需要替换文案：
 
 ```js
-const { createJiwen } = require('jiwen');
-const { createToneGrid } = require('jiwen/tone-grid');
+const { createJiwen } = require('@clarashafiq/jiwen');
+const { createToneGrid } = require('@clarashafiq/jiwen/tone-grid');
 
 // 用默认通用文案（功能性的，但缺少角色个性）
 const grid = createToneGrid();
@@ -329,7 +329,7 @@ const jiwen = createJiwen({
 参数校准靠猜是猜不准的。`simulate.js` 提供事件线模拟器：给定一个场景和多组参数，输出完整的状态轨迹 CSV。
 
 ```js
-const { simulate, toCSV, toCompareTable } = require('jiwen/simulate');
+const { simulate, toCSV, toCompareTable } = require('@clarashafiq/jiwen/simulate');
 
 const scenario = [
   { time: 0,   action: 'set_last_message', content: '晚安，去睡了' },
