@@ -229,9 +229,65 @@ const state = await jiwen.getState();
 | `setUserStatus(status)` | 设置对方状态（active / busy / away / sleeping） |
 | `getUerStatus()` | 获取对方当前状态 |
 
-### 覆盖人格文案
+### 语调网格（推荐）
 
-`getPromptContext()` 和 `getStyleGuidance()` 默认用通用中文文案。角色有特定人设时注入自定义函数：
+手动写 `getPromptContext` / `getStyleGuidance` 查表函数比较繁琐。jiwen 提供了 `tone-grid` 模块——一个预置的 **9 情绪簇 × 5 档 pride** 语调网格，你只需要替换文案：
+
+```js
+const { createJiwen } = require('jiwen');
+const { createToneGrid } = require('jiwen/tone-grid');
+
+// 用默认通用文案（功能性的，但缺少角色个性）
+const grid = createToneGrid();
+
+// 或者从 JSON 配置文件加载自定义文案：
+// const config = require('./my-character-tone.json');
+// const grid = createToneGrid(config);
+
+const jiwen = createJiwen({
+  // ...其他配置,
+  getStyleGuidance: (state) => grid.getStyleGuidance(state),
+  getPromptContext:  (state) => grid.getPromptContext(state),
+});
+```
+
+**配置文件格式** (`my-character-tone.json`)：
+```json
+{
+  "profiles": {
+    "excited": {
+      "1": ["完全放开了，话多且直接……"],
+      "2": ["语气轻快，带着笑意……"],
+      "3": ["心情不错但保持得体……"],
+      "4": ["表面克制但兴奋漏出来……"],
+      "5": ["即使开心也几乎不表现……"]
+    },
+    "content": { ... },
+    "agitated": { ... },
+    "depressed": { ... },
+    "neutral": { ... },
+    "sullen": { ... },
+    "restless": { ... },
+    "pleased": { ... },
+    "calm": { ... }
+  },
+  "urgencyBoost": {
+    "desperate": { "proactive": "...", "reactive": "..." },
+    "urgent":    { "proactive": "...", "reactive": "..." },
+    "aware":     { "proactive": "...", "reactive": "..." }
+  }
+}
+```
+
+9 个情绪簇由 valence × arousal 二维象限 + 单轴极端情况 + 中性组成。每个簇 5 档 pride（1=完全不端着 → 5=全副武装）。`connection` 急迫度叠加在核心规则之上，区分「角色主动开口」(proactive) 和「回复对方」(reactive) 两种模式。
+
+**只覆盖部分格子也可以**——没填的档位自动回退到 tier 3（中间档），没填的簇回退到 `neutral`。可以从 4 个主象限各填 1 档开始跑起来，再慢慢补。
+
+完整写法见 [部署指南：语调网格设计](./GUIDE.md#第二步设计你的语调网格core_profiles)。
+
+### 手动覆盖（高级）
+
+如果你需要完全自定义查表逻辑（不同的情绪分类、不同的轴组合），可以手动注入函数：
 
 ```js
 const jiwen = createJiwen({

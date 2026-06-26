@@ -7,7 +7,9 @@
   "files": [
     "jiwen.js",
     "simulate.js",
+    "tone-grid.js",
     "README.md",
+    "GUIDE.md",
     "CLAUDE.md"
   ],
   "keywords": [

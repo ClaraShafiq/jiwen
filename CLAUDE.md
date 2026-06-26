@@ -36,10 +36,11 @@ Sanctuary/services/state.js  ← Draco 适配层（私密）
 ```
 jiwen/
 ├── jiwen.js       # 核心引擎 createJiwen(opts)
+├── tone-grid.js   # 语调网格模块 createToneGrid(opts) — 9簇×5档预置网格
 ├── jiwen.test.js  # 测试套件（29项，node jiwen.test.js）
 ├── simulate.js    # 参数模拟器（事件线 → 轨迹 CSV + 诊断列）
 ├── README.md      # 架构文档 + 快速开始 + API
-├── package.json   # npm 包
+├── GUIDE.md       # 部署指南：完整情绪驱动系统搭建
 └── CLAUDE.md      # 本文件
 ```
 
