@@ -1,6 +1,6 @@
 {
   "name": "@clarashafiq/jiwen",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "积温 — 不靠概率骰子的 AI 角色主动意识引擎。五轴连续状态 + 数学漂移 + 阈值触发 + 参数模拟器",
   "main": "jiwen.js",
   "license": "MIT",

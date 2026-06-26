@@ -228,6 +228,39 @@ const state = await jiwen.getState();
 | `getLastChatMessageId()` | 获取上次分析到的消息 ID |
 | `setUserStatus(status)` | 设置对方状态（active / busy / away / sleeping） |
 | `getUerStatus()` | 获取对方当前状态 |
+| `getStateSummary()` | 返回当前状态的可读摘要（一行字符串，调试用） |
+
+### 调试日志
+
+jiwen 默认只在**阈值触发时**打印状态。开启 `verbose` 后每次 `tick()` 都打印：
+
+```js
+const jiwen = createJiwen({
+  verbose: true,  // 每次 tick 都打日志
+  // ...
+});
+```
+
+日志格式：
+```
+[积温] tick 5min | c:0.15→0.18 p:0.40→0.39 v:0.20→0.18 a:-0.10→-0.08 i:0.50 | 速率:0.0035/min | 触发: —
+```
+
+如果不想用 `console.log`（比如在 AstrBot 里需要把日志发到聊天窗口），传入 `onLog` 回调：
+
+```js
+const jiwen = createJiwen({
+  onLog: (msg) => { /* 发到聊天 / 写文件 / 推通知 */ },
+  // ...
+});
+```
+
+`getStateSummary()` 返回一行紧凑的可读摘要，适合调试时快速查看：
+
+```js
+console.log(jiwen.getStateSummary());
+// [积温] c:0.15(悠闲) p:0.40(端着) v:0.20(中性) a:-0.10(平静) i:0.50(沉浸于reading) | claraStatus: active
+```
 
 ### 语调网格（推荐）
 

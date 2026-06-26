@@ -125,6 +125,19 @@ function createJiwen(opts) {
     subjectPronoun:  'ta',
   }, opts.persona);
 
+  // ── 调试选项 ────────────────────
+  const verbose = opts.verbose === true;
+  const onLog = typeof opts.onLog === 'function' ? opts.onLog : null;
+
+  function log(msg) {
+    if (onLog) {
+      try { onLog(msg); } catch (_) { /* 用户回调不应阻断 tick */ }
+    }
+    if (!onLog || verbose) {
+      console.log(msg);
+    }
+  }
+
   // ── 内部状态 ────────────────────
   const DEFAULT_STATE = {
     connection: axes.connection[0],
@@ -345,11 +358,24 @@ function createJiwen(opts) {
 
     state.lastTick = now;
 
-    // ── 日志：状态变化（有阈值触发时打印完整 diff）──
+    // ── 日志 ──
     const triggers = checkThresholds();
 
-    if (triggers.length > 0) {
-      console.log(
+    // 详细模式：每次 tick 都打状态
+    if (verbose) {
+      log(
+        `[积温] tick ${mins}min | ` +
+        `c:${stateBefore.connection.toFixed(2)}→${state.connection.toFixed(2)} ` +
+        `p:${stateBefore.pride.toFixed(2)}→${state.pride.toFixed(2)} ` +
+        `v:${stateBefore.valence.toFixed(2)}→${state.valence.toFixed(2)} ` +
+        `a:${stateBefore.arousal.toFixed(2)}→${state.arousal.toFixed(2)} ` +
+        `i:${state.immersion.toFixed(2)} | ` +
+        `速率:${effectiveRate?.toFixed(4) || '?'}/min | ` +
+        `触发: ${triggers.length > 0 ? triggers.map(t => t.action + (t.reason ? '(' + t.reason + ')' : '')).join(', ') : '—'}`
+      );
+    } else if (triggers.length > 0) {
+      // 默认模式：仅阈值触发时打印
+      log(
         `[积温] tick ${mins}min | ` +
         `c:${stateBefore.connection.toFixed(2)}→${state.connection.toFixed(2)} ` +
         `p:${stateBefore.pride.toFixed(2)}→${state.pride.toFixed(2)} ` +
@@ -559,6 +585,28 @@ function createJiwen(opts) {
     return state.claraStatus || 'active';
   }
 
+  // ── 可读状态摘要（调试用）──
+  function getStateSummary() {
+    const c = state.connection;
+    const p = state.pride;
+    const v = state.valence;
+    const a = state.arousal;
+    const i = state.immersion;
+
+    const cLabel = c < 0.20 ? '悠闲' : c < 0.35 ? '留意' : c < 0.50 ? '想念' : '焦躁';
+    const pLabel = p > 0.8 ? '全副武装' : p > 0.5 ? '防御' : p > 0.3 ? '端着' : p > 0.1 ? '微防' : '放软';
+    const vLabel = v > 0.3 ? '开心' : v < -0.3 ? '难受' : '中性';
+    const aLabel = a > 0.3 ? '焦躁' : a < -0.3 ? '慵懒' : '平静';
+    const iLabel = i > 0.3 && state.lastActivity
+      ? `沉浸于${state.lastActivity.type}` : '空闲';
+
+    return [
+      `[积温] c:${c.toFixed(2)}(${cLabel}) p:${p.toFixed(2)}(${pLabel}) v:${v.toFixed(2)}(${vLabel}) a:${a.toFixed(2)}(${aLabel}) i:${i.toFixed(2)}(${iLabel})`,
+      `claraStatus: ${state.claraStatus || 'active'}`,
+      state.lastActivity ? `lastActivity: ${state.lastActivity.type} @ ${state.lastActivity.at}` : null,
+    ].filter(Boolean).join(' | ');
+  }
+
   // ── 暴露引擎 ────────────────────
   return {
     load,
@@ -577,6 +625,7 @@ function createJiwen(opts) {
     getLastDracoMessageId,
     setClaraStatus,
     getClaraStatus,
+    getStateSummary,
     // 暴露配置快照（只读），方便外部查看
     config: {
       axes,
